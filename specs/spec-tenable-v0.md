@@ -9,7 +9,7 @@
 | Slug | `tenable` |
 | Display name | TAP Tenable |
 | Description | A read-only collector for Tenable Security Center that lands vulnerability findings, the plugin metadata behind them and per-plugin package observations on the grid. |
-| Kind | Leaf plugin: links to `compliance_core` (the shared vulnerability, by edge, never written) and `computing_core` (the package, by edge, only when a parser's result is unambiguous), and inherits the `dcom` axis; read by VDR plugins through the grid, with no import. |
+| Kind | Leaf plugin: links to `compliance_core` (the shared vulnerability, by edge, never written) and `computing_core` (the package, by edge, only when a parser's result is unambiguous); read by VDR plugins through the grid, with no import. |
 
 **Default dimensions.**
 
@@ -67,7 +67,6 @@ Seven consequences shape v0:
 | req-tenable-package-link | [Package Link](#package-link) | Proposed | An edge to a `computing_core` package only when a parser's result is unambiguous |
 | req-tenable-observe | [The Observation Command](#the-observation-command) | Proposed | A read-only command that records what an instance returns so shapes are observed before they are parsed |
 | req-tenable-fips | [FIPS Posture](#fips-posture) | Proposed | Declared from what the validator reports; no `cryptography` extra |
-| req-tenable-dcom | [The dcom Axis](#the-dcom-axis) | Proposed | A value or an exemption for every node and edge type |
 | req-tenable-software-enumeration | Host Software Enumeration | Backlog | The `listsoftware` tool parsed into `computing_core` host-package data, as another per-plugin-style parser |
 | req-tenable-host-enrichment | Host, Address And Port Enrichment | Backlog | Create or enrich `computing_core` hosts, addresses and ports from findings |
 | req-tenable-cloud | Tenable VM Transport | Backlog | The cloud findings export (a POST job, a status poll, chunk downloads) as a second transport behind the same vocabulary |
@@ -452,32 +451,6 @@ The runtime dependencies are `pytenable` and its base requirements, which at the
 | req-tenable-fips-1 | Declared From The Validator | Proposed | The `[fips]` table matches what `crypto-providers` reports at strict level, with a `reason` when `uses-nonvalidated`. | |
 | req-tenable-fips-2 | No Bundled-OpenSSL Extra | Proposed | No dependency or extra that bundles its own OpenSSL is declared. | Ties to `req-tenable-transport-5`. |
 
-### The dcom Axis
-----
-RID: `req-tenable-dcom`
-
-Status: `Proposed`
-
-The plugin inherits `dcom` by declaring it in `depends_on`, and says for every type what kind of fact it is, or why it is left unstamped. Only facts derived from configuration can go stale, and dcom warns against stamping `operation` on a type that is later overwritten in place.
-
-#### Implementation
-
-| Type | dcom | Reason |
-| --- | --- | --- |
-| `tenable_scan_run` | `operation` | A collection that happened; immutable once recorded. |
-| `tenable_plugin` | `configuration` | A definition the scanner reads to decide what to detect, revised in place under a changing `pluginModDate`. |
-| `tenable_scanner` | exempt | A record of the instance whose reported facts change in place; it is neither a declared configuration this plugin versions nor an event. |
-| `tenable_finding` | exempt | An assertion revised across runs (`state`, `last_seen_run_id`); stamping `operation` would promise immutability it does not have. |
-| `RUN_OF_SCANNER__tenable` | `operation` | It records that a run read a scanner. |
-| the other edges | exempt | Derived links, not events or declarations. |
-
-#### Acceptance Criteria
-
-| ACID | Title | Status | Description | Notes |
-| --- | --- | --- | --- | --- |
-| req-tenable-dcom-1 | Every Type Accounted For | Proposed | Every node and edge type either stamps a `dcom` value or is listed as exempt with a reason; a test asserts there is no type in neither. | |
-| req-tenable-dcom-2 | No Operation On A Mutable Type | Proposed | No type that is rewritten in place carries `operation`. | |
-
 ### v0 Non-Goals
 ----
 RID: `req-tenable-nongoals`
@@ -496,6 +469,7 @@ What this plugin deliberately does not do, and who owns it.
 - **No pages or panels.** Backend only; a page would be its own requirement.
 - **No scheduling or credential minting.** The grid's collector scheduling and the operator own them.
 - **No Tenable users, roles, scanners or scan definitions as nodes.**
+- **The `dcom` axis is not adopted in v0.** No type is stamped and the plugin does not depend on `dcom`; sibling collectors do not either. Adopting it later is a manifest dependency and a stamping change, and it is the operator's call, not this plugin's default.
 - **Backlog, not non-goals:** host software enumeration, host and address enrichment, the cloud transport, named scopes and a vendor drift check.
 
 #### Acceptance Criteria
