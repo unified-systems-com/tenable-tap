@@ -87,7 +87,7 @@ How the collector knows which Security Center to read and how to authenticate. T
 
 The secret is a plugin secret: its consumer is the Tenable collector, so the envelope's scope is `tenable`, its key is chosen by the operator to name the instance, and the file is `<key>.secret.json` under the secrets root, never in a repository. Its kind is `tenable_sc_credential`, a kind this plugin owns: the collector validates `data` against `tap_plugin/tenable/schemas/tenable_sc_credential.schema.json` (strict, a `description` on the top level and every field) with `require_secret_kind` before any request. `data` holds:
 
-- `base_url`: the Security Center root, such as `https://sc.example:443`. `http://` or `https://` as written. Required.
+- `base_url`: the Security Center root, such as `https://sc.example:443`. `http://` or `https://` exactly as written, and the client never changes it. Required. An `http://` URL sends the API keys and every response across the network unencrypted, so each run that uses one records a `PLAINTEXT_TRANSPORT` warning on the scan run and the observation command prints one; the scheme is part of the scanner key, so the two are different scanners.
 - `access_key`, `secret_key`: the API keys of a Security Center user with API-key authentication enabled. Required.
 - `ssl_verify`: boolean, optional, default `true`. `false` is honoured, because the operator knows the network, and every run it applies to records a `TLS_VERIFICATION_DISABLED` warning on the scan run and the observation command prints one.
 - `ca_bundle`: the absolute path of a PEM file on the host, never its contents. Optional.
@@ -103,6 +103,7 @@ The envelope's description states the least-privilege shape: a read-only role wh
 | req-tenable-connection-2 | Secret Never Echoed | Proposed | The keys are absent from logs, scan-run properties and exception text, including when a request fails, and from every `__repr__`. | A test fails a request and searches all of them. |
 | req-tenable-connection-3 | Verification On By Default | Proposed | `ssl_verify` defaults to `true` and the client always passes it explicitly; an absent field never reaches pyTenable's own default of false. | |
 | req-tenable-connection-4 | Disabled Verification Is Recorded | Proposed | A run with `ssl_verify: false` records `TLS_VERIFICATION_DISABLED` on its scan run. | The operator's choice, stated and warned. |
+| req-tenable-connection-9 | Plaintext Is Recorded | Proposed | A run whose `base_url` is `http://` records `PLAINTEXT_TRANSPORT` on its scan run, the observation command prints it, and any other scheme is refused before any request. | An HTTP-only instance on an isolated network is the operator's call; it is stated and warned, never silent. |
 | req-tenable-connection-5 | Strict Base URL | Proposed | A `base_url` with userinfo, a query or a fragment is refused before any request; host and scheme are lower-cased and the path is preserved, so one instance has one key however its URL is spelled. | |
 | req-tenable-connection-6 | One Envelope Per Instance | Proposed | Two envelopes yielding the same scanner key refuse the run before any request, naming both. | |
 | req-tenable-connection-7 | Strict Credential Schema | Proposed | The `tenable_sc_credential` schema is strict, with no field missing and every field described; a wrong kind or shape fails that instance's run before any request, naming `tenable:<key>` and never a value. | |
@@ -240,12 +241,12 @@ Down-selecting what a run gathers. A filter changes what "read" means, so it can
 
 #### Implementation
 
-The `scope` object in the envelope (`req-tenable-connection`). Every option is applied server-side in the analysis `query.filters`, so a narrow filter bounds the read as well as the stored data. The filter names and value formats are documented only and are probed by the observation command (a bad filter name returns the valid list, per pyTenable).
+The `scope` object in the envelope (`req-tenable-connection`). Every option is applied server-side in the analysis `query.filters`, so a narrow filter bounds the read as well as the stored data. The kind column is what resolution may rely on: a **scope** filter is checkable against a column the finding stores, a **non-resolving** filter narrows the read but names a fact the finding does not store (asset-list membership lives in Security Center, and a `patched` read is a different set from the current one), and a **window** filter excludes findings that are still open. The filter names and value formats are documented only and are probed by the observation command (a bad filter name returns the valid list, per pyTenable).
 
 | Option | Security Center filter | Kind |
 | --- | --- | --- |
 | `repository_ids` | `repositoryIDs` | scope |
-| `asset_ids` | `asset` | scope |
+| `asset_ids` | `asset` | non-resolving |
 | `min_severity` | `severity` (0 informational to 4 critical) | scope |
 | `plugin_ids`, `plugin_families` | `pluginID`, `familyID` | scope |
 | `exclude_plugin_ids` | not confirmed; client-side unless Security Center supports exclusion | scope |
@@ -253,11 +254,11 @@ The `scope` object in the envelope (`req-tenable-connection`). Every option is a
 | `exploit_available` | `exploitAvailable` | scope |
 | `has_cve` | `cveID` | scope |
 | `risk_status` | `acceptRiskStatus`, `recastRiskStatus` | scope |
-| `source` | `sourceType`: `cumulative` or `patched` | scope |
+| `source` | `sourceType`: `cumulative` or `patched` | non-resolving |
 | `last_seen_within` | `lastSeen` | **window** |
 | `max_records` | a ceiling per repository | safety |
 
-A scope filter can be checked against a column the finding stores (repository, severity, plugin, family, port, protocol, exploit, risk status), so the collector knows whether a stored finding was in scope and resolves only those. A window filter excludes findings that are still open, so a run that applies one is **incremental**, is recorded as such, and resolves nothing; only a run without a window filter resolves. An unknown option, an invalid value or a filter Security Center rejects refuses the run before any read and never widens it to everything. Saved Security Center queries (`query_id`) are not supported: their contents are not visible to the plugin, so it could not record the scope or say what is safe to resolve.
+A scope filter can be checked against a column the finding stores (repository, severity, plugin, family, port, protocol, exploit, risk status, CVE), so the collector knows whether a stored finding was in scope and resolves only those. A run that applies a window filter or a non-resolving filter is **incremental**, is recorded as such with the filter that made it so, and resolves nothing; only a run with scope filters alone, or none, resolves. Fail closed: a filter whose kind is not stated in this table is treated as non-resolving. An unknown option, an invalid value or a filter Security Center rejects refuses the run before any read and never widens it to everything. Saved Security Center queries (`query_id`) are not supported: their contents are not visible to the plugin, so it could not record the scope or say what is safe to resolve.
 
 #### Acceptance Criteria
 
@@ -265,8 +266,8 @@ A scope filter can be checked against a column the finding stores (repository, s
 | --- | --- | --- | --- | --- |
 | req-tenable-scope-1 | Filter In The Envelope | Proposed | The filter is read only from the operator-owned envelope and never from a node. | |
 | req-tenable-scope-2 | Filter Recorded On The Run | Proposed | The scan run records the canonical filter exactly as applied and whether the run was incremental. | |
-| req-tenable-scope-3 | Window Never Resolves | Proposed | A run using `last_seen_within` resolves no finding, and is recorded as incremental. | |
-| req-tenable-scope-4 | Scope Resolves Only In Scope | Proposed | With a scope filter, a finding resolves only if its stored columns satisfy the filter. | A finding outside the filter keeps what it had. |
+| req-tenable-scope-3 | Window And Non-Resolving Never Resolve | Proposed | A run using `last_seen_within`, `asset_ids` or `source` resolves no finding, and is recorded as incremental with the filter responsible. | A filter of unknown kind is non-resolving. |
+| req-tenable-scope-4 | Scope Resolves Only In Scope | Proposed | With scope filters alone, a finding resolves only if its stored columns satisfy every filter; a filter whose predicate the finding does not store cannot be a scope filter. | A finding outside the filter keeps what it had. |
 | req-tenable-scope-5 | Invalid Filter Refuses | Proposed | An unknown option, a bad value or a rejected filter ends the run before any read; it never falls back to an unfiltered read. | |
 | req-tenable-scope-6 | Ceiling Is A Recorded Stop | Proposed | Reaching `max_records` records the repository as possibly truncated and resolves nothing in it. | Ties to `req-tenable-states-4`. |
 | req-tenable-scope-7 | No Saved Queries | Proposed | A `query_id` option is refused as unsupported. | The scope would be invisible. |
@@ -282,7 +283,7 @@ The record of which instance was read and what each collection did.
 #### Implementation
 
 - `tenable_scanner` (`tenable.area: run`): one per Security Center instance, with `scanner_key` derived from the canonical root of `base_url` (lower-cased scheme and host, the port, the path as configured). `platform` is `security_center` (`vulnerability_management` is reserved for `req-tenable-cloud`). The reported version and the repositories are facts on the scanner, not part of its key. The previous-run facts the probe needs are properties of the scanner.
-- `tenable_scan_run` (`tenable.area: run`): one per collection, `KEYLESS` with the reason that it records something this plugin did. It carries the probe results, the version verdict, the TLS warning, the applied filter and incremental flag, the repositories not read with reasons, and the counts of findings by parse state.
+- `tenable_scan_run` (`tenable.area: run`): one per collection, `KEYLESS` with the reason that it records something this plugin did. It carries the probe results, the version verdict, the TLS and plaintext warnings, the applied filter and incremental flag, the repositories not read with reasons, and the counts of findings by parse state.
 - `RUN_OF_SCANNER__tenable`: scan run to scanner.
 
 #### Acceptance Criteria
@@ -324,7 +325,7 @@ How Security Center's vulnerability results become Tenable-owned nodes, each hol
 
 #### Implementation
 
-`tenable_finding` (`tenable.area: finding`): one per assertion. Its natural key is `(scanner_key, repository_id, host_key, plugin_id, port, protocol)`, every part a non-empty-or-observed-empty string and never null, because a null part is an unobserved hole and would mint a new node every run. `host_key` is derived by one function from three stored columns, as Anchore derives its package key: `uuid:<hostUUID>` when the repository is `universal` format and the host UUID is present, otherwise `ipdns:<ip>|<dnsName>` for `IPv4` format, and the model validates `host_key` against `host_uuid`, `ip` and `dns_name`. The reported `ip`, `dns_name`, `netbios_name`, `mac_address` and `operating_system` are stored beside it as returned. `port` and `protocol` are the strings Tenable returns, so `"0"` and `"TCP"` are observed values. The finding carries Tenable's fields as returned: `severity` (id, name), `risk_factor`, the base, temporal, VPR, CVSS v3 and v4 and EPSS scores, `exploit_available` and the exploit fields, `first_seen` and `last_seen` as the epoch strings returned, `accept_risk`, `recast_risk`, `has_been_mitigated`, the raw `cve` string, the plugin's `cpe` as it appears on the finding, and the raw `plugin_text`. It also carries `state` (`current` or `resolved`, null when never observed), `last_seen_run_id`, and the parse result of `req-tenable-parsers`.
+`tenable_finding` (`tenable.area: finding`): one per assertion. Its natural key is `(scanner_key, repository_id, host_key, plugin_id, port, protocol)`, every part a non-empty-or-observed-empty string and never null, because a null part is an unobserved hole and would mint a new node every run. `host_key` is derived by one function from three stored columns, as Anchore derives its package key: `uuid:<hostUUID>` when the repository is `universal` format and the host UUID is present, otherwise `ipdns:<ip>|<dnsName>` for `IPv4` format, and the model validates `host_key` against `host_uuid`, `ip` and `dns_name`. The reported `ip`, `dns_name`, `netbios_name`, `mac_address` and `operating_system` are stored beside it as returned. `port` and `protocol` are the strings Tenable returns, so `"0"` and `"TCP"` are observed values. The finding carries Tenable's fields as returned: `severity` (id, name), `risk_factor`, the base, temporal, VPR, CVSS v3 and v4 and EPSS scores, `exploit_available` and the exploit fields, the plugin family (`family_id`, `family_name`) so a family filter can be checked, `first_seen` and `last_seen` as the epoch strings returned, `accept_risk`, `recast_risk`, `has_been_mitigated`, the raw `cve` string, the plugin's `cpe` as it appears on the finding, and the raw `plugin_text`. It also carries `state` (`current` or `resolved`, null when never observed), `last_seen_run_id`, and the parse result of `req-tenable-parsers`.
 
 #### Acceptance Criteria
 
