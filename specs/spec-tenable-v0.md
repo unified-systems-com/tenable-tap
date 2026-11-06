@@ -371,7 +371,7 @@ What ties a finding to a package, software or application is not a structured fi
 
 #### Implementation
 
-`tap_plugin/tenable/parsers/` holds one module per plugin, `plugin_<id>.py`. A parser is a pure function `parse(finding) -> list[PackageObservation]` with no I/O, where `finding` is the validated finding fields (`plugin_text`, `cpe`, `port`, `protocol` and the plugin id). A `PackageObservation` has `product`, `name`, `version`, `installed_path`, `fixed_version` and `evidence`, each nullable; `evidence` is the exact segment of the plugin output the values were read from. A parser registers itself by plugin id in a registry. The collector records, per finding, exactly one parse state:
+`tap_plugin/tenable/parsers/` holds one module per plugin, `plugin_<id>.py`. A parser is a pure function `parse(finding) -> list[PackageObservation]` with no I/O, where `finding` is the validated finding fields (`plugin_text`, `cpe`, `port`, `protocol` and the plugin id). A `PackageObservation` has `ecosystem`, `product`, `name`, `version`, `installed_path`, `fixed_version`, `evidence` and `mapping_unambiguous`, where every field but `mapping_unambiguous` is nullable and `mapping_unambiguous` is a boolean the parser sets true only when its `ecosystem`, `name` and `version` identify exactly one `computing_core` package (`req-tenable-package-link`); `evidence` is the exact segment of the plugin output the values were read from. A parser registers itself by plugin id in a registry. The collector records, per finding, exactly one parse state:
 
 - `parsed`: the plugin has a parser and it returned observations (an empty list is a recorded, observed result);
 - `no_parser`: the plugin has none; **never "no package"**;
