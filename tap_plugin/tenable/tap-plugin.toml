@@ -1,0 +1,28 @@
+manifest_version = "0"
+plugin_version = "0.1.0" # x-release-please-version
+requires_tap = ">=0.3.2"
+slug = "tenable"
+name = "TAP Tenable"
+description = "Tenable Security Center vulnerability findings and per-plugin package observations, read from its REST API and held on the grid as Tenable returns them."
+
+# Tier-1 load order (req-tap-plugin-arch-dependencies). The Tenable nodes link to computing_core's
+# package (req-tenable-package-link) and compliance_core's vulnerability (req-tenable-vulnerability-link).
+# Nothing in this scaffold imports either yet; the declaration is the plan, and the first change that
+# imports or names a type from them makes it observed. Naming their entity types in edge definitions is a
+# vocabulary dependency (new-plugin Step 6, Tier 1b), declared here with a note.
+depends_on = [
+  { slug = "computing_core", note = "FOUND_IN_PACKAGE__tenable targets computing_core__package, written only when a parser's result is unambiguous; vocabulary dependency" },
+  { slug = "compliance_core", note = "ABOUT_VULNERABILITY__tenable targets compliance_core__compliance_vulnerability, written only against an existing node with the exact id; the plugin writes no compliance_core node; vocabulary dependency" },
+]
+
+# The author's DECLARED crypto posture (req-tap-plugin-manifest-v0-fips; spec-fips.md declare-vs-decide).
+# The client (pyTenable over `requests`) reaches TLS through Python's ssl module and the system OpenSSL;
+# the `pkcs12` extra, which bundles its own, is not installed (req-tenable-fips). This is a declaration to be
+# checked: validate_plugin's crypto-providers report is the arbiter, and pydantic's compiled core is unobserved.
+[fips]
+status = "compatible"
+
+[[boot.records]]
+name = "ci"
+description = "RESERVED NAME (req-boot-bootstrap-ci-record): the stack this plugin's own tests run in - depends_on closure + self, offline, credential-free. The consumer flips self to editable."
+sha256 = "8cb12c4e95156dcf8f94daf3b44cb1371b2aeb7942f7af7d55fd3d7d420c6678"
