@@ -1,0 +1,9 @@
+{
+  "slug": "ABOUT_PORT__tenable",
+  "name": "About Port",
+  "description": "A finding concerns a port on an address on the console's declared network, when the result names a port other than \"0\". The target is closed to computing_core's port type, declared in depends_on as a vocabulary dependency.",
+  "sources": ["tenable__tenable_finding"],
+  "targets": ["computing_core__port"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "finding"}
+}

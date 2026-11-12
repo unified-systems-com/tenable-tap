@@ -1,0 +1,9 @@
+{
+  "slug": "COVERS_REPOSITORY__tenable",
+  "name": "Covers Repository",
+  "description": "An accept-risk or recast-risk rule applies to results in a repository.",
+  "sources": ["tenable__tenable_accept_risk_rule", "tenable__tenable_recast_risk_rule"],
+  "targets": ["tenable__tenable_repository"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "risk"}
+}

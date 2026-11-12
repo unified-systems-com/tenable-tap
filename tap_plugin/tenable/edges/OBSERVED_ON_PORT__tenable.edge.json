@@ -1,0 +1,9 @@
+{
+  "slug": "OBSERVED_ON_PORT__tenable",
+  "name": "Observed On Port",
+  "description": "Tenable observed a service answering on a port of an address on the console's declared network. The target is closed to computing_core's port type, declared in depends_on as a vocabulary dependency.",
+  "sources": ["tenable__tenable_observed_program"],
+  "targets": ["computing_core__port"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "observation"}
+}

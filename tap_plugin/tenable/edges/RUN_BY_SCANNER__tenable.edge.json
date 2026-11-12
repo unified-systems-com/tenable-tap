@@ -1,0 +1,9 @@
+{
+  "slug": "RUN_BY_SCANNER__tenable",
+  "name": "Run By Scanner",
+  "description": "A scan result was produced by a scan engine its detail record names (GET /rest/scanResult/{id}). One scan may run on several engines.",
+  "sources": ["tenable__tenable_scan_result"],
+  "targets": ["tenable__tenable_scanner"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "run"}
+}

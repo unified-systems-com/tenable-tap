@@ -1,0 +1,9 @@
+{
+  "slug": "IN_PLUGIN_FAMILY__tenable",
+  "name": "In Plugin Family",
+  "description": "A Tenable plugin belongs to a plugin family, as the plugin's own record names it.",
+  "sources": ["tenable__tenable_plugin"],
+  "targets": ["tenable__tenable_plugin_family"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "plugin"}
+}

@@ -1,0 +1,9 @@
+{
+  "slug": "IN_SCAN_ZONE__tenable",
+  "name": "In Scan Zone",
+  "description": "A scan engine belongs to a scan zone, as Security Center reports the scanner's zones. A scanner may sit in several zones.",
+  "sources": ["tenable__tenable_scanner"],
+  "targets": ["tenable__tenable_scan_zone"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "run"}
+}

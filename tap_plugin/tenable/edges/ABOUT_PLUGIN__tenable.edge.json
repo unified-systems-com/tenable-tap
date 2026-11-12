@@ -1,0 +1,9 @@
+{
+  "slug": "ABOUT_PLUGIN__tenable",
+  "name": "About Plugin",
+  "description": "A finding or compliance result was produced by a Tenable plugin. The result's route to everything that describes the plugin: its CVEs, CPE, scores and family.",
+  "sources": ["tenable__tenable_finding", "tenable__tenable_compliance_result"],
+  "targets": ["tenable__tenable_plugin"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "finding"}
+}

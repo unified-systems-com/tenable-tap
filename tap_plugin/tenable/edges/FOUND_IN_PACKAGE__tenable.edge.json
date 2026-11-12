@@ -1,0 +1,9 @@
+{
+  "slug": "FOUND_IN_PACKAGE__tenable",
+  "name": "Found In Package",
+  "description": "A finding was reported against an installed package, as the plugin's parser read it from the output. Written only when the parser's result names exactly one computing_core package; the target is closed to computing_core's package type, declared in depends_on as a vocabulary dependency.",
+  "sources": ["tenable__tenable_finding"],
+  "targets": ["computing_core__package"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "finding"}
+}

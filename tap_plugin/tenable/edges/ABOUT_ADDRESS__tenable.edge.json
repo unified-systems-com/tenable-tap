@@ -1,0 +1,9 @@
+{
+  "slug": "ABOUT_ADDRESS__tenable",
+  "name": "About Address",
+  "description": "A finding concerns an address on the console's declared network, when the result names an IP and no port. The target is closed to computing_core's ip_address type, declared in depends_on as a vocabulary dependency.",
+  "sources": ["tenable__tenable_finding"],
+  "targets": ["computing_core__ip_address"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "finding"}
+}

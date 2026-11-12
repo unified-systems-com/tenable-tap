@@ -1,0 +1,9 @@
+{
+  "slug": "IMPORTED_INTO_REPOSITORY__tenable",
+  "name": "Imported Into Repository",
+  "description": "A scan result's results were imported into a Security Center repository.",
+  "sources": ["tenable__tenable_scan_result"],
+  "targets": ["tenable__tenable_repository"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "run"}
+}

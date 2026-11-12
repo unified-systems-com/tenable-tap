@@ -1,0 +1,9 @@
+{
+  "slug": "RECORDED_IN_REPOSITORY__tenable",
+  "name": "Recorded In Repository",
+  "description": "An observed host is recorded in the Security Center repository whose host-uniqueness rule tells it apart. The repository is part of the host's key, so each observed host has exactly one.",
+  "sources": ["tenable__tenable_observed_host"],
+  "targets": ["tenable__tenable_repository"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "observation"}
+}
