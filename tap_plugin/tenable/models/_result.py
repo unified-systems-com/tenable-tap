@@ -169,6 +169,8 @@ class TenableResult(TenableNode):
         except UnkeyableError as exc:
             raise ValidationError({"host_key": [str(exc)]}) from exc
         errors = {}
+        if (self.state == "resolved") != (self.resolution_source is not None):
+            errors["resolution_source"] = ["a resolved result names how it was resolved, and only a resolved result does"]
         if self.host_key != expected_host:
             errors["host_key"] = ["host_key does not match host_uniqueness and the component columns"]
         if self.assertion_key != expected_assertion:

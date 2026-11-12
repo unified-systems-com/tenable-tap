@@ -195,6 +195,13 @@ class TestResultKeys:
             fields = {f.name for f in get_model_class(type_slug)._meta.get_fields()}
             assert not fields & {"cve", "cpe"}, type_slug
 
+    @pytest.mark.spec("req-tenable-states-3")
+    def test_state_and_resolution_source_agree(self):
+        assert not create_node("tenable__tenable_finding", {**_result("4"), "state": "current", "resolution_source": "not_reported"}).success
+        assert not create_node("tenable__tenable_finding", {**_result("5"), "resolution_source": "aged_out"}).success
+        assert not create_node("tenable__tenable_finding", {**_result("6"), "state": "resolved"}).success
+        assert create_node("tenable__tenable_finding", {**_result("7"), "state": "resolved", "resolution_source": "tenable_mitigated"}).success
+
     def test_state_is_null_until_observed_and_enumerated(self):
         assert _create("tenable__tenable_finding", _result()).state is None
         assert not create_node("tenable__tenable_finding", {**_result("2"), "state": "fixed"}).success
