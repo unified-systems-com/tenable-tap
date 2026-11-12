@@ -1,6 +1,6 @@
 # Tenable Plugin Specification
 
-**A read-only collector for Tenable Security Center (on-prem first) that on a schedule reads vulnerability findings and the plugin metadata behind them and writes them to the grid as Tenable-owned nodes holding Tenable's data as Tenable returns it, with a per-plugin parser step that extracts, from each finding's plugin output, whatever ties the finding to a package, software or application, so a vulnerability detection and response implementation can read what Tenable knows without going to Tenable.**
+**A read-only collector for Tenable Security Center (on-prem first) that on a schedule reads every plugin result Tenable holds (vulnerability findings, configuration audit results and informational results), the plugin metadata behind them, the hosts and services Tenable observed, the scans it ran, its repositories, its accept-risk and recast-risk rules and its own record of what it mitigated. It writes them to the grid as Tenable-owned nodes in Tenable's own shape, with per-plugin parsers that extract what ties a result to a host, service or package, and it links them to the shared `computing_core` nodes for what it can state as fact (an address on a network, a port on that address, a DNS name, an interface's MAC), so a vulnerability detection and response implementation can read what Tenable knows without going to Tenable.**
 
 ## Plugin Identity
 
@@ -8,20 +8,21 @@
 | --- | --- |
 | Slug | `tenable` |
 | Display name | TAP Tenable |
-| Description | A read-only collector for Tenable Security Center that lands vulnerability findings, the plugin metadata behind them and per-plugin package observations on the grid. |
-| Kind | Leaf plugin: links to `compliance_core` (the shared vulnerability, by edge, never written) and `computing_core` (the package, by edge, only when a parser's result is unambiguous); read by VDR plugins through the grid, with no import. |
+| Description | A read-only collector for Tenable Security Center that lands every plugin result, the plugins behind them, Tenable's observed hosts and services, scans, repositories, risk rules and mitigation record on the grid, linked to shared addresses, ports, DNS names and interfaces. |
+| Kind | Leaf plugin: links to `compliance_core` (the shared vulnerability, by edge, never written) and writes or links `computing_core` facts (IP address, port, DNS name, network interface) and the package (by edge, only when a parser's result is unambiguous); read by VDR plugins through the grid, with no import. |
 
 **Default dimensions.**
 
 | Key | Value | Why |
 | --- | --- | --- |
-| `tenable.area` | `run` on scanner and scan-run nodes; `finding` on finding nodes; `plugin` on plugin nodes | Lets a page or Search group the Tenable-specific nodes without listing types. The key is namespaced by this vocabulary, which only this plugin gives meaning. The `compliance_core` and `computing_core` nodes this plugin links to keep their owners' dimensions and receive none from here. |
+| `tenable.area` | `run` on scanner, scan-run, scan-result and repository nodes; `finding` on finding and compliance-result nodes; `plugin` on plugin nodes; `observation` on observed-host and observed-program nodes; `risk` on accept-risk and recast-risk rule nodes | Lets a page or Search group the Tenable-specific nodes without listing types. The key is namespaced by this vocabulary, which only this plugin gives meaning. |
+| `tenable.instance` | The scanner key, on every Tenable-owned node | Says which Security Center a node came from without a traversal. Stamped only on types this plugin owns. The `compliance_core` and `computing_core` nodes this plugin links to keep their owners' dimensions and receive none from here. |
 
 ## Philosophy
 
 Tenable already does the hard part: it scans, matches plugins and scores what it finds. A vulnerability detection and response implementation needs those answers on the grid, next to everything else the grid knows, with their provenance. This plugin carries them across. It does not scan, does not decide what a finding means for any compliance factor, and never changes Tenable. It carries Tenable's data as Tenable returns it and does not interpret, consolidate or judge it: no severity scale, risk model or mapping is applied. How an organisation reads Tenable beside its other scanners is a later layer.
 
-Seven consequences shape v0:
+Nine consequences shape v0:
 
 1. **Never mutates Tenable.** Security Center's only read path for findings is `POST /analysis`, so "GET only" cannot be the rule. The rule is that the transport permits an enumerated list of method-and-path pairs (the analysis query and plain GET reads) and refuses everything else, so the credential can be a read-only role and a bug here cannot change Tenable.
 2. **Tenable's data in Tenable's shape; link, never merge.** Scanner, scan run, finding and plugin are Tenable-owned nodes. The shared vulnerability and the package are other plugins' nodes, reached by edge. Nothing Tenable says is written into a record another producer shares.
@@ -30,8 +31,12 @@ Seven consequences shape v0:
 5. **The package is a per-plugin fact.** Security Center gives a CPE that belongs to the plugin and free-text plugin output that belongs to the finding; the installed package, version and path live only in that text, in a shape that differs by plugin. So extraction is one parser per plugin, as an explicit, countable, testable list, and a plugin without one is recorded as having none, never as having no package.
 6. **There is no vendor contract file.** Security Center publishes no OpenAPI file, so the extract-and-drift machinery of sibling collectors has nothing to reduce from. Responses are validated against schemas written from the vendor's documented examples, marked *documented* until a recorded response replaces them.
 7. **The supported versions are data.** Which upstream versions the plugin is known to work with, and on what evidence, is a committed file the probe reads, not prose.
+8. **Facts on shared nodes, observations on Tenable's.** What a result establishes as fact (this address on the configured network answered, this port on it was open, this host carries this DNS name or this MAC) is written to or linked with the shared `computing_core` node, from any result that reports it, network or on-board. What Tenable infers or records about it (the service behind a port, an OS guess, a host as Tenable tracks it) is an observation on a Tenable-owned node: `tenable__observed_host`, `tenable__observed_program`. Observations link to facts and never pretend to be them. Matching Tenable's view to other sources' (an EC2 instance, an agent's process list) is a reconciler's job, outside this collector.
+9. **Everything Tenable returns, in its own types.** A plugin result is a finding unless it is a configuration audit check, which is a compliance result. Repositories, scan results and risk rules are nodes of their own, because each is a record Tenable keeps and a reader asks about directly ("which hosts had an authenticated scan", "which findings sit under an accepted risk"). Severity is never a collection filter by default; informational results are collected like any other.
 
 **Prior art, and what it changed.** Surveyed 2026-11-06 from documentation and package metadata, not by running against an instance. `pyTenable`'s `tenable.sc.analysis` (documented in its source and docs) supplied the read path (one analysis endpoint, a `tool` per view, offset paging, filters per tool) and the client we build on; it defaults `ssl_verify` to false and its session login is a POST to `/token`, so we always pass verification explicitly and reach only the key-auth path. Tenable's own API reference supplied the request body, the example finding fields, the separate `/plugin` objects and the `x-apikey` header (keys need Security Center 5.13 or later). Tenable VM's findings export (a POST job with polled status and chunks) shows the cloud transport is a different wire behind the same vocabulary, which is why cloud is a Backlog requirement. `anchore-tap` (this organisation) supplied the structure this plugin inherits: findings keyed by what they assert, resolve only what was read, three states, operator settings never read from user-editable nodes, a per-run probe, and provenance markers. On supported-version declaration, Grafana's `grafanaDependency` and Elastic's `conditions.kibana.version` showed a declared range checked by tooling (and Grafana's plugin that shipped an open-ended range and failed to load on a newer release showed why a range must not hard-enforce); Home Assistant keeps upstream firmware requirements in documentation and warns, which we adopt as the posture. No source declares evidence level beside a range; that is ours. Cartography's Tenable module (read 2026-11-06; it targets Tenable VM, not Security Center) supplied one structural lesson: it links CVEs from plugins, not findings, after a plugin naming hundreds of CVEs reported per host multiplied edges and made a graph index reject the write.
+
+**Prior art, second survey (2026-11-12), and what it changed.** Read from each project's source and Tenable's documentation, not run. Tenable's integration guide for Security Center (developer.tenable.com, `sc-integrations`) recommends `vulndetails` for results and `sumip` for hosts, pages of 2,000 to 10,000, incremental pulls on `lastSeen` and `lastMitigated`, and gives the finding identity as the record's host-uniqueness fields plus plugin, port and protocol; the Elastic `tenable_sc` integration and the Splunk add-on both build identity from the record's own `uniqueness` lists, which is why `host_key` now follows `hostUniqueness`. The Splunk add-on reads the patched view on every run and marks those results fixed, while Elastic reads only the cumulative view and is still building a latest-state view, which is why this plugin reads both and puts Tenable's mitigation first. DefectDojo put plugin output into its de-duplication hash and had to remove it (issues 8417, 11994), and the Splunk add-on replaces oversized plugin output with a stub; plugin output stays out of every key here and is stored whole. Tenable's audit-file documentation says Security Center gives each audit check its own plugin id above 1,000,000, while Nessus reports checks under shared per-audit plugins, which is why compliance results have their own type keyed like findings. pyTenable's `analysis.vulns()` adds a filter valid only from Security Center 6.2 (pyTenable issue 828), which is why the collector builds analysis bodies itself. No maintained library parses Tenable plugin output (pyTenable, nessus-file-reader, faraday-plugins, DefectDojo's parsers, python-libnessus and go-nessus were checked); MITRE's `nessus-to-hdf` is the reference for audit elements.
 
 **Provenance markers.** *Documented* (read from Tenable's API reference pages, pyTenable's source and docs and PyPI metadata, 2026-11-06): every endpoint, field and header named below. *Designed* (this document): every node, edge, key, filter, parser rule and verdict. *Observed*: nothing. No Security Center has been called. Every parser, field mapping, filter value format and "works on version X" claim is provisional until a recorded response from a real instance replaces it, and no requirement below reaches `Implemented` on a documented claim alone.
 
@@ -47,6 +52,8 @@ Seven consequences shape v0:
 | 6 | Know What Is Supported | The upstream versions and the evidence for each are a committed file the run checks and reports against. |
 | 7 | Tenable's Shape, Linked | Tenable's data is stored as Tenable returns it in Tenable-owned nodes, linked to the shared nodes it concerns; no interpretation is applied. |
 | 8 | Backend Only | No page or panel ships; the outputs are nodes and edges other surfaces read. |
+| 9 | Facts Apart From Observations | Shared `computing_core` nodes receive only facts; Tenable's inferences live on Tenable-owned observation nodes linked to them. |
+| 10 | Everything Tenable Holds | Every plugin result, the scans, repositories, risk rules and mitigation record reach the grid, each in a type that fits it. |
 
 ## Requirements
 
@@ -61,7 +68,16 @@ Seven consequences shape v0:
 | req-tenable-scope | [Scope Filters](#scope-filters) | Proposed | Server-side filters in the envelope; scope filters versus window filters; the filter recorded on the run |
 | req-tenable-scanner-run | [Scanner And Scan Run](#scanner-and-scan-run) | Proposed | The instance and each collection, with the probe, filter, TLS and parse counts |
 | req-tenable-plugin | [Plugin Metadata](#plugin-metadata) | Proposed | A Tenable-owned node per plugin from `GET /plugin/{id}` |
-| req-tenable-findings | [Findings](#findings) | Proposed | A node per assertion, keyed by what it asserts, with Tenable's fields as returned |
+| req-tenable-findings | [Findings](#findings) | Proposed | A node per non-audit plugin result, keyed by what it asserts, with Tenable's fields and full plugin output as returned |
+| req-tenable-compliance-results | [Compliance Results](#compliance-results) | Proposed | A node per configuration audit check result, with the `cm:` elements parsed out of the plugin output beside the raw text |
+| req-tenable-mitigation | [Tenable's Mitigation Record](#tenables-mitigation-record) | Proposed | The patched view read every run; Tenable's mitigation is the primary resolved signal, not-reported-in-a-clean-read the fallback |
+| req-tenable-repository | [Repositories](#repositories) | Proposed | A node per repository, carrying the data format that marks agent data |
+| req-tenable-scan-result | [Scan Results](#scan-results) | Proposed | A node per scan Tenable ran, from the scan-result list |
+| req-tenable-observed-host | [Observed Hosts](#observed-hosts) | Proposed | A node per host as Tenable tracks it, keyed by the record's own host-uniqueness fields, with Tenable's per-host scan facts |
+| req-tenable-observed-program | [Observed Programs](#observed-programs) | Proposed | A node per service Tenable detected on a host's port, from a service-detection parser |
+| req-tenable-risk-rules | [Risk Rules](#risk-rules) | Proposed | A node per accept-risk and recast-risk rule, linked to the plugin and repository it covers |
+| req-tenable-shared-facts | [Shared Facts](#shared-facts) | Proposed | Addresses, ports, DNS names and interfaces written to or linked in `computing_core`, from any result that reports them |
+| req-tenable-run-links | [Last Seen In Run](#last-seen-in-run) | Proposed | One edge per observation to the run that last read it, moved each run |
 | req-tenable-vulnerability-link | [Shared Vulnerability Link](#shared-vulnerability-link) | Proposed | One edge per CVE from the plugin, never from the finding, only to an existing `compliance_core` vulnerability with that exact id |
 | req-tenable-parsers | [Per-Plugin Package Parsers](#per-plugin-package-parsers) | Proposed | One parser module per plugin, a registry, four parse states, a fixture and a test each |
 | req-tenable-package-link | [Package Link](#package-link) | Proposed | An edge to a `computing_core` package only when a parser's result is unambiguous |
@@ -69,10 +85,12 @@ Seven consequences shape v0:
 | req-tenable-fips | [FIPS Posture](#fips-posture) | Proposed | Declared from what the validator reports; no `cryptography` extra |
 | req-tenable-finding-cve-narrowing | Finding-Level CVE Narrowing | Backlog | Only if a recording shows Security Center reports a host-specific subset of a plugin's CVEs, or a plugin's CVE list differs by host or by configuration, write `ABOUT_VULNERABILITY__tenable` from the finding for just those CVEs; not built unless a need is found |
 | req-tenable-software-enumeration | Host Software Enumeration | Backlog | The `listsoftware` tool parsed into `computing_core` host-package data, as another per-plugin-style parser |
-| req-tenable-host-enrichment | Host, Address And Port Enrichment | Backlog | Create or enrich `computing_core` hosts, addresses and ports from findings |
 | req-tenable-cloud | Tenable VM Transport | Backlog | The cloud findings export (a POST job, a status poll, chunk downloads) as a second transport behind the same vocabulary |
 | req-tenable-scopes-list | Named Scopes Per Envelope | Backlog | A list of named filter sets per instance, each read and resolved independently |
 | req-tenable-drift | Vendor Contract Drift Check | Backlog | A scheduled comparison against a vendor contract file, if Tenable publishes one for Security Center |
+| req-tenable-nessus-download | Per-Scan `.nessus` Enrichment | Backlog | Download each new scan result as `.nessus` (`POST /rest/scanResult/{id}/download`, `downloadType` `v2`), read with pyTenable's `NessusReportv2`, for the service name per port, each plugin's remote or local type and host properties; possibly a separate collector; links observations to the scan results that saw them |
+| req-tenable-reconciler | Cross-Source Reconciliation | Backlog | Linking Tenable's observations to other sources' nodes (an EC2 instance, an agent-reported program) by evidence-carrying edges, never merges; a separate library collectors pull in; absorbs mapping cloud ids Tenable reports to `aws_core` nodes |
+| req-tenable-product-parsers | Product And Version Parsers | Backlog | Parsers for the banner plugins (web server, SSH server and similar) that fill an observed program's product, version and CPE |
 | req-tenable-nongoals | [v0 Non-Goals](#v0-non-goals) | Proposed | What this plugin deliberately does not do, and who owns it |
 
 ### Connection And Credential
@@ -91,7 +109,9 @@ The secret is a plugin secret: its consumer is the Tenable collector, so the env
 - `access_key`, `secret_key`: the API keys of a Security Center user with API-key authentication enabled. Required.
 - `ssl_verify`: boolean, optional, default `true`. `false` is honoured, because the operator knows the network, and every run it applies to records a `TLS_VERIFICATION_DISABLED` warning on the scan run and the observation command prints one.
 - `ca_bundle`: the absolute path of a PEM file on the host, never its contents. Optional.
+- `network_name`: the network the instance's results come from, as a value of `computing_core`'s `tap.computing.network_name` dimension (for example `corp`, or `Internet` for public addresses). Required. It is the network every address and port fact from this instance is written on (`req-tenable-shared-facts`), whether the result came from a network scan or an agent, because it names where the results were gathered, not where the scanner sits. An instance whose results span several networks is not supported in v0; per-collector configuration is the later answer.
 - `scope`: the filter object of `req-tenable-scope`. Optional.
+- `scan_result_window_days`: how far back the scan-result list is read (`req-tenable-scan-result`), a positive integer, default `30`. Optional.
 
 The envelope's description states the least-privilege shape: a read-only role whose reach is limited to the repositories to be read. The collector reads every envelope in scope `tenable`; each yields one scanner whose key is derived from the canonical root of `base_url` (`req-tenable-scanner-run-2`). An envelope that fails validation fails only its own run, naming `tenable:<key>`. These credentials have no scannable shape, so no `CredentialPattern` and no entropy rule is added; protection rests on the envelope layer, the leak guard, `.gitignore` and redaction: the keys reach pyTenable as constructor arguments, no object holding them shows them in its `__repr__`, and no log line, scan-run field or exception carries a value.
 
@@ -107,6 +127,7 @@ The envelope's description states the least-privilege shape: a read-only role wh
 | req-tenable-connection-5 | Strict Base URL | Proposed | A `base_url` with userinfo, a query or a fragment is refused before any request; host and scheme are lower-cased and the path is preserved, so one instance has one key however its URL is spelled. | |
 | req-tenable-connection-6 | One Envelope Per Instance | Proposed | Two envelopes yielding the same scanner key refuse the run before any request, naming both. | |
 | req-tenable-connection-7 | Strict Credential Schema | Proposed | The `tenable_sc_credential` schema is strict, with no field missing and every field described; a wrong kind or shape fails that instance's run before any request, naming `tenable:<key>` and never a value. | |
+| req-tenable-connection-10 | Network Is Declared | Proposed | `network_name` is required and non-empty; an envelope without it fails that instance's run before any request. Its value is recorded on the scanner. | Facts from an instance with no declared network would land on a guessed one. |
 | req-tenable-connection-8 | Undetectability Is Recorded | Proposed | The spec states these credentials have no scannable shape; a test asserts no `CredentialPattern` was added. | Silence would look like coverage. |
 
 ### The Guarded Transport
@@ -123,7 +144,11 @@ The dependency is `pytenable==X.Y.Z` pinned exactly in `pyproject.toml` (a range
 
 - `POST /rest/analysis`, whose body has `type: "vuln"` and no other type, and never `/rest/analysis/download`;
 - `GET /rest/plugin` and `GET /rest/plugin/{id}`;
+- `GET /rest/scanResult` (the list, with `fields`), and never `/rest/scanResult/{id}/download` in v0 (`req-tenable-nessus-download` is Backlog and would add it by a spec change);
+- `GET /rest/acceptRiskRule` and `GET /rest/recastRiskRule` (the lists, with `fields`);
 - the system and status reads pyTenable and the probe make (`GET /rest/system`, `GET /rest/status`, `GET /rest/repository`), each listed by name.
+
+Analysis bodies are built by the collector and sent through the client's request method, not through pyTenable's `analysis.vulns()`: that helper adds an implicit `wasVuln=excludeWas` filter to every cumulative query, a filter Security Center accepts only from 6.2, which would make every read fail on 5.13 to 6.1. The collector adds `wasVuln=excludeWas` itself, and only when the probed version is 6.2 or later, so web-application findings stay out of v0 without breaking older instances.
 
 Authentication is by API keys only (`X-APIKey: accessKey=…; secretKey=…`, Security Center 5.13 or later). pyTenable's session login is `POST /token`, which is not on the allowlist, so that path is unreachable; a Security Center older than 5.13 is not supported (`req-tenable-upstream-versions`). The allowlist is the plugin's one definition of "read", and a change to it is a spec change.
 
@@ -136,6 +161,7 @@ Authentication is by API keys only (`X-APIKey: accessKey=…; secretKey=…`, Se
 | req-tenable-transport-3 | Bound To The Root | Proposed | A request to any other host, port, scheme or path root is refused, and so is any redirect, before a second request. | The session holds the keys. |
 | req-tenable-transport-4 | Bounded Retries | Proposed | Retries are limited in count and total time and honour `Retry-After`; exhaustion is a recorded failure, never an empty result. | Ties to `req-tenable-states`. |
 | req-tenable-transport-5 | Exact Pin, No Crypto Extra | Proposed | `pyproject.toml` pins `pytenable` with `==` and names no extra; a test asserts both. | |
+| req-tenable-transport-7 | No Implicit Filters | Proposed | Analysis bodies are built by the plugin; `wasVuln=excludeWas` is sent only to Security Center 6.2 or later, and a test asserts no pyTenable helper adds a filter the plugin did not set. | pyTenable issue 828. |
 | req-tenable-transport-6 | Verification Cannot Be Overridden | Proposed | A per-request `verify`, `cert` or `proxies` override is refused by `send`; the CA bundle is applied on the session by the plugin only. | Whether pyTenable honours a session-level `verify` is unobserved; a test settles it. |
 
 ### Probe And Provenance
@@ -148,7 +174,7 @@ Before reading data, the collector asks the instance what it is and which reposi
 
 #### Implementation
 
-Reads the system and status endpoints and the repository list (`req-tenable-transport`), each optional except the repository list the scope walk needs. Recorded on the scan run: the base URL host, the reported Security Center version, the repositories (id, name, `dataFormat`) and the verdict of `req-tenable-upstream-versions`, each `null` when the instance did not answer. An unreadable version is `null` and never a pass. A repository whose `dataFormat` is not one of the two documented values (`IPv4`, `universal`) is recorded as read-with-unknown-format and its findings are not stored (`req-tenable-findings-3`).
+Reads the system and status endpoints and the repository list (`req-tenable-transport`), each optional except the repository list the scope walk needs. Recorded on the scan run: the base URL host, the reported Security Center version, the repositories (id, name, `dataFormat`) and the verdict of `req-tenable-upstream-versions`, each `null` when the instance did not answer. An unreadable version is `null` and never a pass. Each repository becomes a node (`req-tenable-repository`). Repositories whose `dataFormat` is `IPv4`, `IPv6`, `agent` or `universal` are read; `mobile` repositories are not read in v0 and are listed as not read with that reason. A repository with any other `dataFormat` is recorded as read-with-unknown-format and its results are not stored (`req-tenable-findings-3`).
 
 #### Acceptance Criteria
 
@@ -219,7 +245,7 @@ How the collector records absence. Every place absence can occur has three outco
 
 #### Implementation
 
-A repository the credential cannot read, a call that failed after its retries, a page that failed validation and a scope the filter made incomplete are each recorded as *not read* on the scan run with the reason, never as zero findings. A field nothing observed is `null`; an observed-empty list is `[]`; an observed empty string stays `""`. The unit of reading, and so of resolution, is one repository: each is read with its own query, so "read successfully" has a precise meaning. A finding resolves only when its repository was read successfully by the same scanner in a run whose filter put it in scope, and it no longer appears; a repository not read keeps whatever it had (`req-tenable-scope`). Nothing is deleted: a finding no longer reported is `resolved`, and a returning one is reopened. The plugin node carries no `state`, because Tenable plugins are metadata and not assertions.
+A repository the credential cannot read, a call that failed after its retries, a page that failed validation and a scope the filter made incomplete are each recorded as *not read* on the scan run with the reason, never as zero findings. A field nothing observed is `null`; an observed-empty list is `[]`; an observed empty string stays `""`. The unit of reading, and so of resolution, is one repository: each is read with its own query, so "read successfully" has a precise meaning. A finding or compliance result resolves in one of two ways, and records which. Primarily, when Tenable's own patched view reports it mitigated (`req-tenable-mitigation`): Tenable counts a result mitigated only when its host, plugin and port were in a scan's scope and absent from the result, and a local check only when authentication succeeded, which is a better test than ours. As a fallback, when its repository was read successfully by the same scanner in a run whose filter put it in scope, it no longer appears in the cumulative view, and the patched view of the same repository was also read successfully; a repository not read keeps whatever it had (`req-tenable-scope`). Nothing is deleted: a result no longer reported is `resolved`, and a returning one is reopened. The plugin node carries no `state`, because Tenable plugins are metadata and not assertions.
 
 #### Acceptance Criteria
 
@@ -227,7 +253,7 @@ A repository the credential cannot read, a call that failed after its retries, a
 | --- | --- | --- | --- | --- |
 | req-tenable-states-1 | Not Read Is Not Clean | Proposed | A repository not read in a run produces no resolved findings and is listed as not read on the run. | |
 | req-tenable-states-2 | Null Is Unobserved | Proposed | A field the response did not carry is `null`, never `""`, `0` or `false`. | |
-| req-tenable-states-3 | Resolve Only What Was Read | Proposed | A finding resolves only when its repository was read successfully by the same scanner in a run whose scope included it, and it is no longer reported. | |
+| req-tenable-states-3 | Resolve Only What Was Read | Proposed | A result resolves only when Tenable's patched view reports it mitigated, or when its repository's cumulative and patched views were both read successfully by the same scanner in a run whose scope included it and it is no longer reported; `resolution_source` records `tenable_mitigated` or `not_reported`. | Tenable's record first, ours as fallback. |
 | req-tenable-states-4 | Truncation Blocks Resolution | Proposed | A repository read that ended at the record ceiling or on a validation failure resolves nothing. | |
 | req-tenable-states-5 | Nothing Is Deleted | Proposed | A finding no longer reported is rewritten as `resolved`, with every other field as it was; a returning one is reopened. | |
 
@@ -247,7 +273,7 @@ The `scope` object in the envelope (`req-tenable-connection`). Every option is a
 | --- | --- | --- |
 | `repository_ids` | `repositoryIDs` | scope |
 | `asset_ids` | `asset` | non-resolving |
-| `min_severity` | `severity` (0 informational to 4 critical) | non-resolving |
+| `min_severity` | `severity` (0 informational to 4 critical); unset by default, so informational results are collected | non-resolving |
 | `plugin_ids` | `pluginID` | scope |
 | `plugin_families` | `familyID` | non-resolving |
 | `exclude_plugin_ids` | not confirmed; client-side unless Security Center supports exclusion | scope |
@@ -255,11 +281,10 @@ The `scope` object in the envelope (`req-tenable-connection`). Every option is a
 | `exploit_available` | `exploitAvailable` | non-resolving |
 | `has_cve` | `cveID` | non-resolving |
 | `risk_status` | `acceptRiskStatus`, `recastRiskStatus` | non-resolving |
-| `source` | `sourceType`: `cumulative` or `patched` | non-resolving |
 | `last_seen_within` | `lastSeen` | **window** |
 | `max_records` | a ceiling per repository | safety |
 
-A scope filter is checked against the key components the finding stores (repository, plugin, port, protocol), so the collector knows whether a stored finding was in scope and resolves only those. A filtered run that uses a mutable-attribute filter adds and updates findings but resolves none; the way to resolve is a run without such a filter, which an operator can schedule less often. A run that applies a window filter or a non-resolving filter is **incremental**, is recorded as such with the filter that made it so, and resolves nothing; only a run with scope filters alone, or none, resolves. Fail closed: a filter whose kind is not stated in this table is treated as non-resolving. An unknown option, an invalid value or a filter Security Center rejects refuses the run before any read and never widens it to everything. Saved Security Center queries (`query_id`) are not supported: their contents are not visible to the plugin, so it could not record the scope or say what is safe to resolve.
+Every run reads both the cumulative and the patched view of each repository with the same filter (`req-tenable-mitigation`), so `source` is not an option. A scope filter is checked against the key components the finding stores (repository, plugin, port, protocol), so the collector knows whether a stored finding was in scope and resolves only those. A filtered run that uses a mutable-attribute filter adds and updates findings but resolves none; the way to resolve is a run without such a filter, which an operator can schedule less often. A run that applies a window filter or a non-resolving filter is **incremental**, is recorded as such with the filter that made it so, and resolves nothing; only a run with scope filters alone, or none, resolves. Fail closed: a filter whose kind is not stated in this table is treated as non-resolving. An unknown option, an invalid value or a filter Security Center rejects refuses the run before any read and never widens it to everything. Saved Security Center queries (`query_id`) are not supported: their contents are not visible to the plugin, so it could not record the scope or say what is safe to resolve.
 
 #### Acceptance Criteria
 
@@ -267,7 +292,7 @@ A scope filter is checked against the key components the finding stores (reposit
 | --- | --- | --- | --- | --- |
 | req-tenable-scope-1 | Filter In The Envelope | Proposed | The filter is read only from the operator-owned envelope and never from a node. | |
 | req-tenable-scope-2 | Filter Recorded On The Run | Proposed | The scan run records the canonical filter exactly as applied and whether the run was incremental. | |
-| req-tenable-scope-3 | Window And Non-Resolving Never Resolve | Proposed | A run using `last_seen_within`, `asset_ids`, `source`, `min_severity`, `exploit_available`, `has_cve`, `risk_status` or `plugin_families` resolves no finding, and is recorded as incremental with the filter responsible. | A filter of unknown kind is non-resolving. |
+| req-tenable-scope-3 | Window And Non-Resolving Never Resolve | Proposed | A run using `last_seen_within`, `asset_ids`, `min_severity`, `exploit_available`, `has_cve`, `risk_status` or `plugin_families` resolves no finding, and is recorded as incremental with the filter responsible. | A filter of unknown kind is non-resolving. |
 | req-tenable-scope-4 | Scope Resolves Only In Scope | Proposed | With scope filters alone, a finding resolves only if its stored key components satisfy every filter; a filter over a mutable attribute or an unstored fact cannot be a scope filter. | A finding outside the filter keeps what it had. |
 | req-tenable-scope-5 | Invalid Filter Refuses | Proposed | An unknown option, a bad value or a rejected filter ends the run before any read; it never falls back to an unfiltered read. | |
 | req-tenable-scope-6 | Ceiling Is A Recorded Stop | Proposed | Reaching `max_records` records the repository as possibly truncated and resolves nothing in it. | Ties to `req-tenable-states-4`. |
@@ -283,9 +308,10 @@ The record of which instance was read and what each collection did.
 
 #### Implementation
 
-- `tenable_scanner` (`tenable.area: run`): one per Security Center instance, with `scanner_key` derived from the canonical root of `base_url` (lower-cased scheme and host, the port, the path as configured). `platform` is `security_center` (`vulnerability_management` is reserved for `req-tenable-cloud`). The reported version and the repositories are facts on the scanner, not part of its key. The previous-run facts the probe needs are properties of the scanner.
+- `tenable_scanner` (`tenable.area: run`): one per Security Center instance, with `scanner_key` derived from the canonical root of `base_url` (lower-cased scheme and host, the port, the path as configured). `platform` is `security_center` (`vulnerability_management` is reserved for `req-tenable-cloud`). The reported version and the envelope's `network_name` are facts on the scanner, not part of its key; repositories are their own nodes (`req-tenable-repository`). The previous-run facts the probe needs are properties of the scanner.
 - `tenable_scan_run` (`tenable.area: run`): one per collection, `KEYLESS` with the reason that it records something this plugin did. It carries the probe results, the version verdict, the TLS and plaintext warnings, the applied filter and incremental flag, the repositories not read with reasons, and the counts of findings by parse state.
 - `RUN_OF_SCANNER__tenable`: scan run to scanner.
+- Every observation the run read points at it by one moved edge (`req-tenable-run-links`); the run itself holds no list of what it saw.
 
 #### Acceptance Criteria
 
@@ -305,7 +331,7 @@ What Tenable says about the plugin that produced a finding, held once and linked
 
 #### Implementation
 
-`tenable_plugin` (`tenable.area: plugin`), natural key `(scanner_key, plugin_id)`, so two instances' feeds never share a node. Read from `GET /rest/plugin/{id}` for each distinct `pluginID` the run saw, with the fields named in the documented list: name, family (id, name, type), `cpe`, `xrefs`, `dependencies`, `requiredPorts`, `requiredUDPPorts`, `riskFactor`, `solution`, `seeAlso`, `synopsis`, `checkType`, the exploit fields, the CVSS, VPR and EPSS scores, and the publication and modification dates, each as returned, plus `cve`, the plugin's CVE string exactly as the findings that name the plugin return it. Security Center returns `cve` on each finding, but it describes the plugin, so it is held once here and not copied onto every host's finding: a cumulative operating-system update plugin names hundreds of CVEs and is reported once per affected host. A finding reaches its CVEs through its plugin. Whether Security Center returns a `cve` string on every finding at all, whether it can be switched off or varied by configuration, and whether it is the same for every finding of one plugin are all unobserved (`req-tenable-finding-cve-narrowing` is the Backlog response if a recording shows host-specific sets); if two findings of one plugin in a run disagree, the plugin keeps the first string read, and the scan run records the plugin id, the number of distinct strings seen and up to ten example assertion keys of the findings that differed, so the evidence is recoverable and a recording shows which findings carried which variant. The `cve` string and its vulnerability edges are refreshed whenever a run's findings carry a different string, independently of `pluginModDate`, which governs only the fields `GET /plugin/{id}` supplies. A plugin node is rewritten when its `pluginModDate` changes; the earlier version is kept as the grid keeps history. `ABOUT_PLUGIN__tenable`: finding to plugin. A plugin whose `GET /plugin/{id}` read failed is still written from the fields its findings carry (`pluginID`, `pluginName`, `family`, `cpe`, `cve`), every field only the plugin read supplies is `null`, and the plugin is listed as not read; the CVE edges and the finding's plugin edge therefore never depend on that read.
+`tenable_plugin` (`tenable.area: plugin`), natural key `(scanner_key, plugin_id)`, so two instances' feeds never share a node. Read from `GET /rest/plugin/{id}` for each distinct `pluginID` the run saw, with the fields named in the documented list: name, family (id, name, type), `cpe`, `xrefs`, `dependencies`, `requiredPorts`, `requiredUDPPorts`, `riskFactor`, `solution`, `seeAlso`, `synopsis`, `checkType`, the exploit fields, the CVSS, VPR and EPSS scores, the publication and modification dates, and `type` (documented values `active`, `passive`, `lce`, `compliance`, `custom`), each as returned, plus `cve`, the plugin's CVE string exactly as the findings that name the plugin return it. Security Center returns `cve` on each finding, but it describes the plugin, so it is held once here and not copied onto every host's finding: a cumulative operating-system update plugin names hundreds of CVEs and is reported once per affected host. A finding reaches its CVEs through its plugin. Whether Security Center returns a `cve` string on every finding at all, whether it can be switched off or varied by configuration, and whether it is the same for every finding of one plugin are all unobserved (`req-tenable-finding-cve-narrowing` is the Backlog response if a recording shows host-specific sets); if two findings of one plugin in a run disagree, the plugin keeps the first string read, and the scan run records the plugin id, the number of distinct strings seen and up to ten example assertion keys of the findings that differed, so the evidence is recoverable and a recording shows which findings carried which variant. The `cve` string and its vulnerability edges are refreshed whenever a run's findings carry a different string, independently of `pluginModDate`, which governs only the fields `GET /plugin/{id}` supplies. A plugin node is rewritten when its `pluginModDate` changes; the earlier version is kept as the grid keeps history. `ABOUT_PLUGIN__tenable`: finding to plugin. A plugin whose `GET /plugin/{id}` read failed is still written from the fields its findings carry (`pluginID`, `pluginName`, `family`, `cpe`, `cve`), every field only the plugin read supplies is `null`, and the plugin is listed as not read; the CVE edges and the finding's plugin edge therefore never depend on that read.
 
 #### Acceptance Criteria
 
@@ -325,11 +351,13 @@ RID: `req-tenable-findings`
 
 Status: `Proposed`
 
-How Security Center's vulnerability results become Tenable-owned nodes, each holding what Tenable returned in the form it returned it. This plugin writes no `compliance_core` node and changes no shared record.
+How Security Center's plugin results, other than configuration audit checks (`req-tenable-compliance-results`), become Tenable-owned nodes, each holding what Tenable returned in the form it returned it: vulnerability results and informational results alike. This plugin writes no `compliance_core` node.
 
 #### Implementation
 
-`tenable_finding` (`tenable.area: finding`): one per assertion. Its natural key is `(scanner_key, assertion_key)`, both non-null strings, because a null part is an unobserved hole and would mint a new node every run. `assertion_key` is the sha256 of the compact JSON array `[repository_id, host_key, plugin_id, port, protocol]`, a fixed 64 characters whatever the parts hold, as Anchore derives its package key. `host_key` is derived by one function from stored columns: `uuid:<hostUUID>` when the repository is `universal` format and the host UUID is present, otherwise `ipdns:<ip>|<dnsName>` for `IPv4` format. The component columns (`repository_id`, `host_uuid`, `ip`, `dns_name`, `plugin_id`, `port`, `protocol`) are stored and searchable beside the key, and the model validates `assertion_key` against them, so no two stored copies can drift and the key rests only on facts the model carries. A result missing any component is not stored (`req-tenable-findings-3`), so no key is ever built over a hole. The reported `ip`, `dns_name`, `netbios_name`, `mac_address` and `operating_system` are stored beside it as returned. `port` and `protocol` are the strings Tenable returns, so `"0"` and `"TCP"` are observed values. The finding carries Tenable's fields as returned: `severity` (id, name), `risk_factor`, the base, temporal, VPR, CVSS v3 and v4 and EPSS scores, `exploit_available` and the exploit fields, the plugin family (`family_id`, `family_name`) as returned, `first_seen` and `last_seen` as the epoch strings returned, `accept_risk`, `recast_risk`, `has_been_mitigated`, the plugin's `cpe` as it appears on the finding, and the raw `plugin_text`. It also carries `state` (`current` or `resolved`, null when never observed), `last_seen_run_id`, and the parse result of `req-tenable-parsers`.
+`tenable_finding` (`tenable.area: finding`): one per assertion, for every result whose plugin is not of type `compliance` (when the plugin read failed, a result whose output carries a `cm:compliance-result` element is treated as a compliance result). Its natural key is `(scanner_key, assertion_key)`, both non-null strings, because a null part is an unobserved hole and would mint a new node every run. `assertion_key` is the sha256 of the compact JSON array `[repository_id, host_key, plugin_id, port, protocol]`, a fixed 64 characters whatever the parts hold, as Anchore derives its package key. `host_key` is the observed host's key (`req-tenable-observed-host`), derived by one function from the record's own `hostUniqueness` field list, which is how Security Center itself says a host is told apart in that repository (for example `repositoryID,ip,dnsName` in an IPv4 repository, the host UUID in a universal one, the agent UUID in an agent one); the Elastic and Splunk integrations build identity the same way. The field list is stored as `host_uniqueness`, and the component columns (`repository_id`, `host_uuid`, `agent_uuid`, `ip`, `dns_name`, `plugin_id`, `port`, `protocol`) are stored and searchable beside the key; the model validates `host_key` and `assertion_key` against them, so no two stored copies can drift and the key rests only on facts the model carries. A `hostUniqueness` naming a field the record does not carry, or a field this function does not know, makes the result unkeyable (`req-tenable-findings-3`). A result missing any component is not stored (`req-tenable-findings-3`), so no key is ever built over a hole. The reported `ip`, `dns_name`, `netbios_name`, `mac_address` and `operating_system` are stored beside it as returned. `port` and `protocol` are the strings Tenable returns, so `"0"` and `"TCP"` are observed values. The finding carries Tenable's fields as returned: `severity` (id, name), `risk_factor`, the base, temporal, VPR, CVSS v3 and v4 and EPSS scores, `exploit_available` and the exploit fields, the plugin family (`family_id`, `family_name`) as returned, `first_seen`, `last_seen` and `last_mitigated` as the epoch strings returned, `accept_risk`, `recast_risk`, their rule comments, `has_been_mitigated`, the plugin's `cpe` as it appears on the finding, and the raw `plugin_text` in full. It also carries `state` (`current` or `resolved`, null when never observed), `resolution_source` (`req-tenable-states-3`), `observation_path` (`network` when the repository is not `agent` format, `on_board` when it is, refined by the plugin's `checkType` once a recording shows what that field holds), and the parse result of `req-tenable-parsers`. The run that last read it is an edge, not a field (`req-tenable-run-links`).
+
+Edges from a finding: `ABOUT_PLUGIN__tenable` to its plugin; `ABOUT_HOST__tenable` to its observed host; `ABOUT_PORT__tenable` to the shared port when the result names a port other than `"0"`, or `ABOUT_ADDRESS__tenable` to the shared address when it names an IP and no port (`req-tenable-shared-facts`).
 
 #### Acceptance Criteria
 
@@ -343,7 +371,9 @@ How Security Center's vulnerability results become Tenable-owned nodes, each hol
 | req-tenable-findings-6 | Scanner In The Key | Proposed | The same assertion from two instances is two findings, and resolution is scoped to one scanner. | |
 | req-tenable-findings-7 | Key Is Never Null | Proposed | `scanner_key` and `assertion_key` are non-null on every stored finding, and a test builds a finding from each component being absent and expects it not stored. | A null key part would mint a duplicate each run (`find_existing` treats it as a hole). |
 | req-tenable-findings-8 | Host Identity Stability Is Open | Proposed | The spec records that a host first seen without a `hostUUID` and later with one would change its `host_key`; the observation command reports whether the same plugin, port and IP appears both ways, and the rule is settled from a recording, not designed around. | Unobserved; documented fields only. |
-| req-tenable-findings-9 | Plugin Output Is Sensitive Evidence | Proposed | `plugin_text` is stored as returned, bounded to its column length, and described in its `help_text` and the README as scanner output that can hold paths, configuration fragments or credentials; the plugin neither scans nor redacts it, and the grid's read authorization is what protects it. The same holds for a parser's `evidence` segment. | The same stance as Anchore's operator-authored VEX text. The grid has no per-field classification this plugin could set. |
+| req-tenable-findings-10 | Plugin Output Kept Whole | Proposed | `plugin_text` is stored in full in an unbounded text column; a test stores an output larger than any fixed column and reads it back unchanged. | The Splunk add-on replaces large output with a stub, which loses what a parser fix would re-read. |
+| req-tenable-findings-11 | Host Part From Host Uniqueness | Proposed | `host_key` is derived from the record's `hostUniqueness` fields and validated against the stored columns; a test covers an IPv4, a universal and an agent record. | Security Center's own identity rule per repository. |
+| req-tenable-findings-9 | Plugin Output Is Sensitive Evidence | Proposed | `plugin_text` is stored as returned, in full, and described in its `help_text` and the README as scanner output that can hold paths, configuration fragments or credentials; the plugin neither scans nor redacts it, and the grid's read authorization is what protects it. The same holds for a parser's `evidence` segment. | The same stance as Anchore's operator-authored VEX text. The grid has no per-field classification this plugin could set. |
 
 ### Shared Vulnerability Link
 ----
@@ -383,7 +413,7 @@ What ties a finding to a package, software or application is not a structured fi
 - `parser_failed`: the output did not match the parser; the raw text is kept and the failure is counted on the run;
 - `not_applicable`: the plugin is known to carry no package information, by an explicit entry in the registry.
 
-The observations, the state, the parser's id and its version are stored on the finding beside the raw text; parsing edits no stored Tenable field, so a parser improvement re-parses stored findings without re-collecting. Every parser ships with a fixture of real plugin output at `tests/fixtures/plugin_<id>.txt` and a test; because v0 is built blind, the first fixtures come from public plugin descriptions and examples and are marked *documented*, and a parser does not reach `Implemented` until a recorded response from a real instance replaces its fixture. The first parsers are written for the highest-volume plugins an instance returns, chosen from the observation command's report rather than guessed. Host software enumeration (`req-tenable-software-enumeration`) is a later parser of the same contract.
+The observations, the state, the parser's id and its version are stored on the finding beside the raw text; parsing edits no stored Tenable field, so a parser improvement re-parses stored findings without re-collecting. Every parser ships with a fixture of real plugin output at `tests/fixtures/plugin_<id>.txt` and a test; because v0 is built blind, the first fixtures come from public plugin descriptions and examples and are marked *documented*, and a parser does not reach `Implemented` until a recorded response from a real instance replaces its fixture. The first parsers are written for the highest-volume plugins an instance returns, chosen from the observation command's report rather than guessed. Host software enumeration (`req-tenable-software-enumeration`) is a later parser of the same contract. The same registry holds the two non-package parsers v0 needs: the service-detection parser that yields observed programs (`req-tenable-observed-program`) and the shared `cm:` parser for compliance results (`req-tenable-compliance-results`). No third-party parsing library is used: none maintained parses Tenable plugin output (surveyed 2026-11-12), and pyTenable's `NessusReportv2` is reserved for `.nessus` files (`req-tenable-nessus-download`). The plugin text Security Center returns is wrapped in `<plugin_output>` tags (community reports, unobserved here); parsers receive it with the wrapper removed, and the stored text keeps it.
 
 #### Acceptance Criteria
 
@@ -418,6 +448,197 @@ Connecting an observation to the grid's package node, but only when that connect
 | req-tenable-package-link-2 | Never From The CPE Alone | Proposed | A plugin's CPE alone never produces a package edge. | The CPE names the plugin's target, not an installed version. |
 | req-tenable-package-link-3 | Observation Stays On The Finding | Proposed | A finding with an observation and no edge still carries the observation. | |
 
+### Compliance Results
+----
+RID: `req-tenable-compliance-results`
+
+Status: `Proposed`
+
+How configuration audit check results (a CIS or DISA benchmark check that passed, failed or warned) become Tenable-owned nodes. They mean something different from a vulnerability, carry different fields, and are read differently, so they have their own type.
+
+#### Implementation
+
+`tenable_compliance_result` (`tenable.area: finding`): one per audit check result, for every result whose plugin is of type `compliance`. Security Center assigns each audit check its own plugin id above 1,000,000, and those ids may differ between instances (documented, Tenable's audit-file pages), so the key is the finding's, `(scanner_key, assertion_key)`, over the same components, and the plugin key's scanner part keeps two instances' ids apart. The result, policy value, actual value and the rest are not structured fields in Security Center; they are `cm:` elements inside the plugin output. One shared parser (`parsers/compliance.py`, registered for every compliance plugin) reads the documented elements: `cm:compliance-check-name`, `-check-id`, `-result`, `-actual-value`, `-policy-value`, `-audit-file`, `-benchmark-name`, `-benchmark-version`, `-benchmark-profile`, `-control-id`, `-functional-id`, `-informational-id`, `-full-id`, `-info`, `-reference`, `-see-also`, `-solution`, `-source` and `-error`, each stored as its own column as written, `null` when absent. The raw `plugin_text`, severity as returned (Tenable maps Pass to Info, Warning to Medium, Fail to High), dates, state, resolution and parse state are stored as on a finding. MITRE's `nessus-to-hdf` converter (Apache-2.0) is the reference design for reading these elements, and its `compliance.nessus` fixture is the first documented fixture. Edges: `ABOUT_PLUGIN__tenable` and `ABOUT_HOST__tenable`, as on a finding. Mapping a result to a compliance control is not done here.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | --- | --- | --- |
+| req-tenable-compliance-results-1 | Own Type | Proposed | A result whose plugin is of type `compliance` is a compliance result and never a finding; a test routes one of each. | |
+| req-tenable-compliance-results-2 | Elements As Written | Proposed | Each documented `cm:` element is stored in its own column exactly as written, `null` when absent, beside the raw text. | No result vocabulary is imposed. |
+| req-tenable-compliance-results-3 | One Check, One Node | Proposed | Two checks on one host are two nodes; a test fails if two checks with distinct plugin ids share a key. | Whether ids are per check is documented, not observed; a recording settles it. |
+| req-tenable-compliance-results-4 | No Control Mapping | Proposed | No compliance result is linked to a control or a `compliance_core` node by this plugin. | A later layer. |
+
+### Tenable's Mitigation Record
+----
+RID: `req-tenable-mitigation`
+
+Status: `Proposed`
+
+Security Center keeps its own record of what it found fixed. Reading it gives a resolution better grounded than ours, and Tenable's mitigation date.
+
+#### Implementation
+
+Every run reads, for each repository it reads, the patched view (`sourceType: patched`) with the same filter as the cumulative view, by the same paging and validation rules. A result in the patched view is written or updated with Tenable's mitigation fields (`last_mitigated`, `has_been_mitigated` as returned), `state: resolved` and `resolution_source: tenable_mitigated`; one never seen in the cumulative view is still written, as resolved. A result reported in both views in one run (Tenable mitigated it and a later scan found it again) is `current`. A repository whose patched read failed is listed as not read for resolution, and only `tenable_mitigated` resolutions from other repositories apply in that run.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | --- | --- | --- |
+| req-tenable-mitigation-1 | Both Views Every Run | Proposed | Each repository read is read in both the cumulative and the patched view with one filter, and the run records both reads' outcomes. | |
+| req-tenable-mitigation-2 | Tenable's Record First | Proposed | A result in the patched view is resolved with `resolution_source: tenable_mitigated` and Tenable's mitigation date. | |
+| req-tenable-mitigation-3 | Current Wins | Proposed | A result in both views in one run is `current`. | |
+| req-tenable-mitigation-4 | Failed Patched Read Blocks Fallback | Proposed | When a repository's patched read fails, no result in it resolves by the `not_reported` fallback. | |
+
+### Repositories
+----
+RID: `req-tenable-repository`
+
+Status: `Proposed`
+
+A repository is the unit Security Center stores results in, the unit this plugin reads and resolves by, and the place the data format that tells agent data apart is declared.
+
+#### Implementation
+
+`tenable_repository` (`tenable.area: run`), key `(scanner_key, repository_id)`, from the probe's `GET /rest/repository`: `id`, `uuid`, `name`, `description`, `type` (Local, Remote, Offline), `dataFormat` (`agent`, `IPv4`, `IPv6`, `mobile`, `universal`), `vulnCount`, `lastSyncTime` and `lastVulnUpdate`, as returned. Edges: `HELD_BY_SCANNER__tenable` to the scanner. Observed hosts and scan results point at it (`RECORDED_IN_REPOSITORY__tenable`, `IMPORTED_INTO_REPOSITORY__tenable`).
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | --- | --- | --- |
+| req-tenable-repository-1 | One Node Per Repository | Proposed | Each repository the credential can see is one node per scanner, rewritten when its fields change. | |
+| req-tenable-repository-2 | Format Drives Path | Proposed | A result's `observation_path` is `on_board` when its repository is `agent` format and `network` otherwise; a test covers both. | |
+
+### Scan Results
+----
+RID: `req-tenable-scan-result`
+
+Status: `Proposed`
+
+The scans Tenable ran: which, when, under what policy, and how much of the target they covered. This is a record Tenable keeps, not a scan definition, which stays out of scope.
+
+#### Implementation
+
+`tenable_scan_result` (`tenable.area: run`), key `(scanner_key, scan_result_id)`, from `GET /rest/scanResult` with an explicit `fields` list, for results whose `finishTime` (or `startTime` while running) falls within `scan_result_window_days`: `id`, `name`, `description`, `status`, `initiator` (id only), `owner` (id only), `repository`, `scan` (id and name), `importStatus`, `importStart`, `importFinish`, `dataFormat`, `resultType`, `resultSource`, `running`, `errorDetails`, `importErrorDetails`, `totalIPs`, `scannedIPs`, `completedIPs`, `completedChecks`, `totalChecks`, `startTime`, `finishTime`, `scanDuration`, `agentScanUUID`, as returned. No user's name or contact details are stored. Edges: `RESULT_OF_SCANNER__tenable` to the scanner, `IMPORTED_INTO_REPOSITORY__tenable` to the repository. Which observations a scan saw is not known from the cumulative view; those links come from `req-tenable-nessus-download`.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | --- | --- | --- |
+| req-tenable-scan-result-1 | Within The Window | Proposed | Only scan results inside the window are read, and the window is recorded on the run. | |
+| req-tenable-scan-result-2 | No Personal Data | Proposed | Initiator and owner are stored as ids only. | |
+| req-tenable-scan-result-3 | Status As Returned | Proposed | `status` and `importStatus` are stored as returned, with no enum. | The values are undocumented. |
+
+### Observed Hosts
+----
+RID: `req-tenable-observed-host`
+
+Status: `Proposed`
+
+A host as Tenable tracks it. Tenable's notion of "a host" is its own construct, keyed its own way, so it is an observation and not a `computing_core` host; facts it reports about the host link to shared nodes.
+
+#### Implementation
+
+`tenable_observed_host` (`tenable.area: observation`), key `(scanner_key, host_key)`, where `host_key` is derived from the record's `hostUniqueness` fields by the one function `req-tenable-findings` uses, so every result, its host and its programs agree. Written for every keyable result. It carries, as last reported: `host_uniqueness` and the component columns, `host_uuid`, `agent_uuid`, `ip`, `ips`, `dns_name`, `netbios_name` (stored here until a NetBIOS node exists), `mac_address`, `operating_system` (Tenable's guess, as returned), and the per-host facts of the host summary tool (`sumip`): the last authenticated and last unauthenticated scan times and the OS CPE, under the names the tool returns, which are undocumented and settled by the observation command. Cloud identifiers Tenable reports (an EC2 instance id) are stored as attributes when a parser yields them; mapping them to `aws_core` nodes is `req-tenable-reconciler`. Edges: `RECORDED_IN_REPOSITORY__tenable` to the repository; to shared facts, `OBSERVED_AT_ADDRESS__tenable` (address), `HAS_DNS_NAME__tenable` (DNS name) and `HAS_INTERFACE__tenable` (network interface by MAC), per `req-tenable-shared-facts`. The address edge is Tenable's to retire: when a later run reports the host at a different address, edge authority retires the old one.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | --- | --- | --- |
+| req-tenable-observed-host-1 | Same Key As Its Results | Proposed | A finding's `host_key` equals its observed host's, for IPv4, universal and agent records. | |
+| req-tenable-observed-host-2 | Never A computing_core Host | Proposed | No `computing_core__host` is written or rewritten by this plugin. | Tenable's host is an observation. |
+| req-tenable-observed-host-3 | Moves Retire Edges | Proposed | A host reported at a new address gains the new address edge and loses the old one by edge authority. | |
+| req-tenable-observed-host-4 | Scan Coverage Kept | Proposed | The host summary's last authenticated and unauthenticated scan times are stored as returned, `null` when absent. | Whether a host had a credentialed scan is a FedRAMP question. |
+
+### Observed Programs
+----
+RID: `req-tenable-observed-program`
+
+Status: `Proposed`
+
+What Tenable thinks is listening on a host's port. A network scan infers the service; it does not see the program, so this is an observation, never a `computing_core` program.
+
+#### Implementation
+
+`tenable_observed_program` (`tenable.area: observation`), key `(scanner_key, host_key, transport, port_number)`, where `transport` and `port_number` are the result's protocol and port as returned. Security Center's analysis records carry no service name, so a program is written only when a registered service-detection parser yields one: v0 registers a parser for Service Detection (plugin 22964), whose output names the service ("A web server is running on this port."). It carries `service_name`, `detecting_plugin_id`, the evidence segment, and `product`, `version` and `cpe`, which stay `null` until `req-tenable-product-parsers`. Edges: `HOSTS_PROGRAM__tenable` from the observed host, and `OBSERVED_ON_PORT__tenable` to the shared port (`req-tenable-shared-facts`).
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | --- | --- | --- |
+| req-tenable-observed-program-1 | Parser Or Nothing | Proposed | A program is written only from a registered service-detection parser's result; a port with no such result has no program. | No empty node per socket. |
+| req-tenable-observed-program-2 | Never A computing_core Program | Proposed | No `computing_core__program` is written by this plugin. | |
+| req-tenable-observed-program-3 | Keyed By Host And Socket | Proposed | Two services on two ports of one host are two programs; the same port on two hosts is two programs. | |
+
+### Risk Rules
+----
+RID: `req-tenable-risk-rules`
+
+Status: `Proposed`
+
+An operator's statement in Tenable that a result is accepted, or should be read at another severity. These are Tenable's deviation record, the counterpart of Anchore's VEX annotations, and a finding only carries a flag that one applied.
+
+#### Implementation
+
+`tenable_accept_risk_rule` and `tenable_recast_risk_rule` (`tenable.area: risk`), keys `(scanner_key, rule_id)`, from `GET /rest/acceptRiskRule` and `GET /rest/recastRiskRule`: `id`, `repository`, `organization` (id), `user` (id only), `plugin`, `hostType`, `hostValue`, `port`, `protocol`, `expires` (`-1` when unset), `status`, `comments`, `createdTime` and `modifiedTime`, and on a recast rule `newSeverity` and `order`, as returned. `comments` is operator text and is stored as returned under the same stance as plugin output (`req-tenable-findings-9`). Edges: `COVERS_PLUGIN__tenable` to the plugin and `COVERS_REPOSITORY__tenable` to the repository. No edge to individual findings is written in v0, because a rule covering all hosts would fan out across the fleet; which findings a rule covers is the finding's own `accept_risk` or `recast_risk` flag.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | --- | --- | --- |
+| req-tenable-risk-rules-1 | Rules As Returned | Proposed | Rule fields are stored as returned, with the user as an id only. | |
+| req-tenable-risk-rules-2 | No Finding Fan-Out | Proposed | No edge runs from a rule to a finding. | |
+| req-tenable-risk-rules-3 | Never Applied By This Plugin | Proposed | No rule changes a finding's state or severity here. | Tenable already applied it. |
+
+### Shared Facts
+----
+RID: `req-tenable-shared-facts`
+
+Status: `Proposed`
+
+What a result establishes as fact is written to, or linked with, the shared `computing_core` node, so Tenable's data meets every other source's at the same address, port, name or interface.
+
+#### Implementation
+
+Built only after `computing_core` ships the natural-key form that names a dimension beside columns, and the keys below; until then this requirement is unbuilt and the rest of the plugin is not blocked by it. Those keys reference the network dimension node by its id, not its dotted name (a core ruling); this spec writes the dotted name `tap.computing.network_name` for readability. The envelope's `network_name` is a value of that dimension, and `computing_core`'s `network` node of the same name carries its ranges and description; this plugin writes no `network` node.
+
+- `computing_core__ip_address`, key `tap.computing.network_name` plus `address`: from a result's `ip`, on the envelope's `network_name`. Loopback, wildcard and link-local addresses are refused by `computing_core` and counted on the run.
+- `computing_core__port`, key the address's plus `transport` and `port_number`: from a result whose port is not `"0"`.
+- `computing_core__dns_name`, key `tap.computing.network_name` plus the canonical name: from a result's `dnsName`.
+- `computing_core__network_interface`, key `tap.computing.network_name` plus `mac_address`: from a result's `macAddress`. Which results carry a MAC that belongs to the host (and not to a router between it and the scanner) is unobserved, so these edges are written only for results whose path a recording shows to be trustworthy, and until then only from `agent` repositories.
+
+Facts come from any result that reports them, network or on-board, because an agent's or a credentialed scan's report of its own address is as true as a network scan's. A fact node is written only with its key fields and is never rewritten when it already exists; shared nodes receive no Tenable dimension. Tenable's view of a fact is an edge from its own node (`ABOUT_PORT__tenable`, `ABOUT_ADDRESS__tenable`, `OBSERVED_AT_ADDRESS__tenable`, `OBSERVED_ON_PORT__tenable`, `HAS_DNS_NAME__tenable`, `HAS_INTERFACE__tenable`).
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | --- | --- | --- |
+| req-tenable-shared-facts-1 | Network From The Envelope | Proposed | Every address, port, DNS name and interface fact carries the envelope's `network_name`. | |
+| req-tenable-shared-facts-2 | Written Bare, Never Rewritten | Proposed | A fact node is created with only its key fields and an existing one is not rewritten. | |
+| req-tenable-shared-facts-3 | Refusals Counted | Proposed | An address `computing_core` refuses is counted on the run and its result is still stored. | |
+| req-tenable-shared-facts-4 | No Port Zero | Proposed | A result with port `"0"` yields no port fact. | Port 0 marks a host-level result. |
+| req-tenable-shared-facts-6 | Own Dimensions On Own Nodes | Proposed | This plugin stamps its dimensions (`tenable.area`, `tenable.instance`) only on the types it owns; a test asserts no shared `computing_core` node it writes or links carries a `tenable.*` dimension. | Standing rule, ruled 2026-11-12, to be reviewed as the plugin is used. |
+| req-tenable-shared-facts-5 | MAC Only When Trustworthy | Proposed | An interface edge is written only from a result path the spec lists as carrying the host's own MAC. | |
+
+### Last Seen In Run
+----
+RID: `req-tenable-run-links`
+
+Status: `Proposed`
+
+Which collector run last read each observation, kept as one edge per observation rather than one per run.
+
+#### Implementation
+
+`LAST_SEEN_IN_RUN__tenable`: from each finding, compliance result, observed host, observed program, repository, scan result and risk rule to the scan run that last read it. Each run moves the edge to itself; edge authority retires the previous one, and the grid's history keeps the earlier runs recoverable. One edge per run would grow by the number of observations every run, the supernode case.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | --- | --- | --- |
+| req-tenable-run-links-1 | One Live Edge | Proposed | After any run, each observation it read has exactly one live `LAST_SEEN_IN_RUN__tenable` edge, to that run. | |
+| req-tenable-run-links-2 | Unread Keeps Its Edge | Proposed | An observation in a repository not read keeps its edge to the last run that read it. | |
+
 ### The Observation Command
 ----
 RID: `req-tenable-observe`
@@ -428,7 +649,7 @@ An instrument for the first sessions against a real instance, and for any later 
 
 #### Implementation
 
-`tap_plugin/tenable/observe.py`, run as `python -m tap_plugin.tenable.observe --list` to see the envelopes and `--key <key>` to observe one (`--dry-run` prints the plan and sends nothing). It reads, through the allowlist only: the probe reads, the repository list, a first page of findings per repository, a sampled plugin's `GET /plugin/{id}`, the valid filter names (by sending a known-bad filter, which the allowlist permits as an ordinary analysis query), and a ranked count of findings by plugin id so the first parsers are chosen from data. By default a run saves **shapes only**: per response its status, the header names that cannot carry a credential, and the field names, types and counts, with every value of `pluginText` and of any host or asset field omitted. Saving raw bodies needs the explicit `--record-bodies` flag, because they can hold credentials the plugin output carried (`req-tenable-findings-9`); with it a response is saved as one JSON file with its body under a private directory outside any repository, the path is printed, and the report reminds the operator to delete it when done. The report prints shapes, counts and statuses, never a body, a key, or a host or asset name. A step with a missing prerequisite is recorded as *not read* with the reason. Recordings are never committed; a fixture is committed only after the operator has reviewed a trimmed copy.
+`tap_plugin/tenable/observe.py`, run as `python -m tap_plugin.tenable.observe --list` to see the envelopes and `--key <key>` to observe one (`--dry-run` prints the plan and sends nothing). It reads, through the allowlist only: the probe reads, the repository list, a first page of findings per repository, a sampled plugin's `GET /plugin/{id}`, the valid filter names (by sending a known-bad filter, which the allowlist permits as an ordinary analysis query), a ranked count of findings by plugin id so the first parsers are chosen from data, the field names (never values) returned by the host summary (`sumip`) and the service, OS and software list tools, the `hostUniqueness` lists seen per repository format, one compliance result's element names if the instance has any, and whether results carry `checkType` values that distinguish remote from local checks. By default a run saves **shapes only**: per response its status, the header names that cannot carry a credential, and the field names, types and counts, with every value of `pluginText` and of any host or asset field omitted. Saving raw bodies needs the explicit `--record-bodies` flag, because they can hold credentials the plugin output carried (`req-tenable-findings-9`); with it a response is saved as one JSON file with its body under a private directory outside any repository, the path is printed, and the report reminds the operator to delete it when done. The report prints shapes, counts and statuses, never a body, a key, or a host or asset name. A step with a missing prerequisite is recorded as *not read* with the reason. Recordings are never committed; a fixture is committed only after the operator has reviewed a trimmed copy.
 
 #### Acceptance Criteria
 
@@ -478,9 +699,11 @@ What this plugin deliberately does not do, and who owns it.
 - **No saved queries and no CSV download.** `req-tenable-scope-7`; the JSON path carries structure.
 - **No pages or panels.** Backend only; a page would be its own requirement.
 - **No scheduling or credential minting.** The grid's collector scheduling and the operator own them.
-- **No Tenable users, roles, scanners or scan definitions as nodes.**
+- **No Tenable users, roles, scanners or scan definitions as nodes.** Scan results are nodes (`req-tenable-scan-result`): they record what Tenable did, not how it was configured.
+- **No event (LCE), mobile, user or web-application data**, and none of the summary tools that only aggregate results by plugin, severity or CVE, which can be derived from the results on the grid.
+- **No cross-source reconciliation.** Linking Tenable's observations to other sources' nodes is `req-tenable-reconciler`.
 - **The `dcom` axis is not adopted in v0.** No type is stamped and the plugin does not depend on `dcom`; sibling collectors do not either. Adopting it later is a manifest dependency and a stamping change, and it is the operator's call, not this plugin's default.
-- **Backlog, not non-goals:** finding-level CVE narrowing (conditional on a recording showing a need), host software enumeration, host and address enrichment, the cloud transport, named scopes and a vendor drift check.
+- **Backlog, not non-goals:** finding-level CVE narrowing (conditional on a recording showing a need), host software enumeration, product and version parsers, per-scan `.nessus` enrichment, cross-source reconciliation, the cloud transport, named scopes and a vendor drift check.
 
 #### Acceptance Criteria
 
@@ -498,7 +721,14 @@ Design-time. Superseded by the manifest when the owning requirement is `Implemen
 | Tenable Scanner | `tenable__tenable_scanner` | run | One per instance; the reported version and repositories are facts on it, not in its key. |
 | Tenable Scan Run | `tenable__tenable_scan_run` | run | `KEYLESS`: records something this plugin did. |
 | Tenable Plugin | `tenable__tenable_plugin` | plugin | Its own node, because many findings share one plugin and the plugin changes on its own schedule. |
-| Tenable Finding | `tenable__tenable_finding` | finding | One per assertion; a package is never copied from here into a shared record. |
+| Tenable Finding | `tenable__tenable_finding` | finding | One per non-audit plugin result; a package is never copied from here into a shared record. |
+| Tenable Compliance Result | `tenable__tenable_compliance_result` | finding | One per audit check result; its `cm:` elements are columns. |
+| Tenable Repository | `tenable__tenable_repository` | run | The unit of reading and resolution; its data format marks agent data. |
+| Tenable Scan Result | `tenable__tenable_scan_result` | run | A scan Tenable ran, not a scan definition. |
+| Tenable Observed Host | `tenable__tenable_observed_host` | observation | A host as Tenable tracks it, keyed by the record's host-uniqueness fields; never a `computing_core` host. |
+| Tenable Observed Program | `tenable__tenable_observed_program` | observation | A service Tenable detected on a host's port; never a `computing_core` program. |
+| Tenable Accept Risk Rule | `tenable__tenable_accept_risk_rule` | risk | Tenable's accepted-risk statement. |
+| Tenable Recast Risk Rule | `tenable__tenable_recast_risk_rule` | risk | Tenable's severity-recast statement. |
 
 ## Edge types
 
@@ -510,3 +740,18 @@ Design-time. Superseded by the manifest when the owning requirement is `Implemen
 | `ABOUT_PLUGIN__tenable` | finding → plugin | none | The plugin behind a finding, and the finding's route to its CVEs. A plugin reaches its scanner through its key, so no plugin-to-scanner edge in v0. |
 | `ABOUT_VULNERABILITY__tenable` | plugin → `compliance_core__compliance_vulnerability` | none | From the plugin, not the finding, so edges scale with plugins and not hosts. Written only against an existing node; vocabulary dependency. |
 | `FOUND_IN_PACKAGE__tenable` | finding → `computing_core__package` | none | Written only when a parser's result is unambiguous; vocabulary dependency. |
+| `ABOUT_HOST__tenable` | finding, compliance result → observed host | none | The host a result concerns. |
+| `ABOUT_PORT__tenable` | finding → `computing_core__port` | none | When the result names a port other than `"0"`. |
+| `ABOUT_ADDRESS__tenable` | finding → `computing_core__ip_address` | none | When the result names an IP and no port. |
+| `HELD_BY_SCANNER__tenable` | repository → scanner | none | Which instance holds a repository. |
+| `RESULT_OF_SCANNER__tenable` | scan result → scanner | none | Which instance ran a scan. |
+| `IMPORTED_INTO_REPOSITORY__tenable` | scan result → repository | none | Where a scan's results went. |
+| `RECORDED_IN_REPOSITORY__tenable` | observed host → repository | none | Where Tenable records the host. |
+| `OBSERVED_AT_ADDRESS__tenable` | observed host → `computing_core__ip_address` | none | Tenable owns it and retires it when the host moves. |
+| `HAS_DNS_NAME__tenable` | observed host → `computing_core__dns_name` | none | The name Tenable reports for the host. |
+| `HAS_INTERFACE__tenable` | observed host → `computing_core__network_interface` | none | Only from result paths whose MAC belongs to the host. |
+| `HOSTS_PROGRAM__tenable` | observed host → observed program | none | The services Tenable detected on the host. |
+| `OBSERVED_ON_PORT__tenable` | observed program → `computing_core__port` | none | The socket the service was seen on. |
+| `COVERS_PLUGIN__tenable` | accept-risk rule, recast-risk rule → plugin | none | The plugin a rule applies to. |
+| `COVERS_REPOSITORY__tenable` | accept-risk rule, recast-risk rule → repository | none | The repository a rule applies to. |
+| `LAST_SEEN_IN_RUN__tenable` | finding, compliance result, observed host, observed program, repository, scan result, rule → scan run | none | One live edge per observation, moved each run. |
