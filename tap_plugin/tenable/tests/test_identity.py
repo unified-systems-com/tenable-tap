@@ -12,7 +12,6 @@ from tap_plugin.tenable.identity import (
     assertion_key,
     canonical_root,
     host_key,
-    instance_dimension,
     text_within_ceiling,
 )
 
@@ -65,14 +64,6 @@ class TestDistinctRoots:
     def test_key_carries_no_credential(self):
         key = canonical_root("https://sc.example:8443/x")
         assert "@" not in key and "secret" not in key
-
-
-class TestInstanceDimension:
-    def test_default_port_dropped(self):
-        assert instance_dimension("https://sc.example:443") == "sc.example"
-
-    def test_other_port_kept(self):
-        assert instance_dimension("https://sc.example:8443/x") == "sc.example:8443"
 
 
 @pytest.mark.spec("req-tenable-findings-11")

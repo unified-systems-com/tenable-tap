@@ -65,17 +65,6 @@ def canonical_root(base_url: str) -> str:
     return f"{scheme}://{host}:{port}{parts.path.rstrip('/')}"
 
 
-def instance_dimension(instance_key: str) -> str:
-    """The `tenable.instance` value: `host[:port]`, the port only when not the scheme's default."""
-    parts = urlsplit(instance_key)
-    host = parts.hostname or ""
-    if ":" in host:
-        host = f"[{host}]"
-    if parts.port is None or parts.port == DEFAULT_PORTS.get(parts.scheme):
-        return host
-    return f"{host}:{parts.port}"
-
-
 def _sha256_of(value: object) -> str:
     return hashlib.sha256(json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
 
