@@ -24,6 +24,7 @@ class TenableNode(BaseModel):
         abstract = True
 
     def validate(self) -> None:
+        super().validate()
         errors: dict[str, list[str]] = {}
         try:
             canonical = canonical_root(self.instance_key or "")
