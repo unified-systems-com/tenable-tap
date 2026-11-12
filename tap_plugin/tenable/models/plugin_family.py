@@ -4,12 +4,11 @@ from typing import Any, ClassVar
 
 from django.db import models
 
-from tap_grid.models import BaseModel
-
+from ._base import TenableNode
 from ._schemas import STATEMENT_STATE, STR, STR_OR_NULL, validated
 
 
-class TenablePluginFamily(BaseModel):
+class TenablePluginFamily(TenableNode):
     """A plugin family as one Security Center reports it.
 
     Many plugins share one family, and risk rules, scan policies and filters name families, so the
@@ -52,7 +51,7 @@ class TenablePluginFamily(BaseModel):
         max_length=16, null=True, blank=True, default=None, help_text="current while a complete read reports the family, withdrawn once one no longer does; null when unobserved."
     )
 
-    class Meta(BaseModel.Meta):
+    class Meta(TenableNode.Meta):
         db_table = "tenable_plugin_family"
 
     def get_name(self) -> str:

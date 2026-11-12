@@ -4,8 +4,7 @@ from typing import Any, ClassVar
 
 from django.db import models
 
-from tap_grid.models import BaseModel
-
+from ._base import TenableNode
 from ._schemas import OBJECT_OR_NULL, STR, STR_OR_NULL, validated
 
 #: Every warning code a run may record: the counter table in req-tenable-scanner-run, and nothing else
@@ -70,7 +69,7 @@ _CREDENTIAL = {
 _VERDICT = {"type": ["string", "null"], "enum": ["observed", "documented_only", "outside", "unreadable", None]}
 
 
-class TenableScanRun(BaseModel):
+class TenableScanRun(TenableNode):
     """One collection against one Security Center: what it read, from what, and what it could not.
 
     A result is judged against the run that last read it, so the run records the probe (version
@@ -182,7 +181,7 @@ class TenableScanRun(BaseModel):
         null=True, blank=True, default=None, help_text="Counts from the spec's one counter table, by name; null when the run recorded none."
     )
 
-    class Meta(BaseModel.Meta):
+    class Meta(TenableNode.Meta):
         db_table = "tenable_scan_run"
 
     def get_name(self) -> str:

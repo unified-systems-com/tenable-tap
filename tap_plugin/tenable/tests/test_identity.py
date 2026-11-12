@@ -36,7 +36,15 @@ class TestCanonicalRoot:
 
     @pytest.mark.parametrize(
         "url",
-        ["https://user:secret@sc.example", "https://sc.example?x=1", "https://sc.example#frag", "ftp://sc.example", "https://"],
+        [
+            "https://user:secret@sc.example",
+            "https://sc.example?x=1",
+            "https://sc.example#frag",
+            "ftp://sc.example",
+            "https://",
+            "https://sc.example:0",
+            "https://sc.example:70000",
+        ],
     )
     def test_refused_before_any_request(self, url):
         with pytest.raises(ValueError):

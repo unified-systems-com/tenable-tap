@@ -11,9 +11,8 @@ from typing import Any, ClassVar
 from django.core.exceptions import ValidationError
 from django.db import models
 
-from tap_grid.models import BaseModel
-
-from ..identity import UnkeyableError, assertion_key, host_key, text_within_ceiling
+from ._base import TenableNode
+from ..identity import UnkeyableError, assertion_key, host_key
 from ._schemas import (
     ARRAY_OR_NULL,
     OBSERVATION_PATH,
@@ -25,9 +24,6 @@ from ._schemas import (
     STR_OR_NULL,
     validated,
 )
-
-#: Free-text columns held to the ceiling (req-tenable-findings-13).
-RESULT_TEXT_FIELDS = ("plugin_text", "accept_risk_comment", "recast_risk_comment")
 
 RESULT_CRUD_SCHEMA: dict[str, Any] = {
     "instance_key": STR,
@@ -66,10 +62,7 @@ RESULT_CRUD_SCHEMA: dict[str, Any] = {
     "parser_version": STR_OR_NULL,
 }
 
-RESULT_VALIDATION_SCHEMA: dict[str, Any] = {
-    **validated(RESULT_CRUD_SCHEMA),
-    **{name: {"validation": "function"} for name in RESULT_TEXT_FIELDS},
-}
+RESULT_VALIDATION_SCHEMA: dict[str, Any] = validated(RESULT_CRUD_SCHEMA)
 
 RESULT_CREATE_REQUIRED = [
     "instance_key",
@@ -83,12 +76,7 @@ RESULT_CREATE_REQUIRED = [
 ]
 
 
-def _within_ceiling(model: BaseModel, name: str) -> None:
-    if not text_within_ceiling(getattr(model, name)):
-        raise ValidationError({name: [f"{name} exceeds the free-text ceiling; cut it and name it in truncated_fields"]})
-
-
-class TenableResult(BaseModel):
+class TenableResult(TenableNode):
     """One plugin result on one host, as Security Center returned it: the shared half."""
 
     FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = RESULT_VALIDATION_SCHEMA
@@ -158,20 +146,12 @@ class TenableResult(BaseModel):
     )
     parser_version = models.CharField(max_length=32, null=True, blank=True, default=None, help_text="The version of the parser that produced the parse result; null when none ran.")
 
-    class Meta(BaseModel.Meta):
+    class Meta(TenableNode.Meta):
         abstract = True
 
-    def validate_plugin_text(self) -> None:
-        _within_ceiling(self, "plugin_text")
-
-    def validate_accept_risk_comment(self) -> None:
-        _within_ceiling(self, "accept_risk_comment")
-
-    def validate_recast_risk_comment(self) -> None:
-        _within_ceiling(self, "recast_risk_comment")
-
     def validate(self) -> None:
-        """The keys must say what the columns say (req-tenable-findings-2, -11)."""
+        """The keys must say what the columns say (req-tenable-findings-2, -11), after the checks every node makes."""
+        super().validate()
         try:
             expected_host = host_key(
                 self.host_uniqueness,

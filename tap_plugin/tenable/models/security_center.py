@@ -2,16 +2,13 @@
 
 from typing import Any, ClassVar
 
-from django.core.exceptions import ValidationError
 from django.db import models
 
-from tap_grid.models import BaseModel
-
-from ..identity import canonical_root
+from ._base import TenableNode
 from ._schemas import STR, STR_OR_NULL, validated
 
 
-class TenableSecurityCenter(BaseModel):
+class TenableSecurityCenter(TenableNode):
     """One Security Center console, the source every other Tenable node is attributed to.
 
     Its identity is the canonical root of the configured base URL, so the same host on another
@@ -48,10 +45,7 @@ class TenableSecurityCenter(BaseModel):
         "reported_version": STR_OR_NULL,
         "network_name": STR,
     }
-    FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = {
-        **validated(FIELD_CRUD_SCHEMA),
-        "instance_key": {"validation": "function"},
-    }
+    FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = validated(FIELD_CRUD_SCHEMA)
     CREATE_REQUIRED: ClassVar[list[str]] = ["instance_key", "network_name"]
 
     instance_key = models.CharField(
@@ -72,16 +66,8 @@ class TenableSecurityCenter(BaseModel):
         help_text="The network this console's results come from, as declared in its credential envelope: a value of computing_core's tap.computing.network_name dimension.",
     )
 
-    class Meta(BaseModel.Meta):
+    class Meta(TenableNode.Meta):
         db_table = "tenable_security_center"
-
-    def validate_instance_key(self) -> None:
-        try:
-            canonical = canonical_root(self.instance_key or "")
-        except ValueError as exc:
-            raise ValidationError({"instance_key": [str(exc)]}) from exc
-        if canonical != self.instance_key:
-            raise ValidationError({"instance_key": ["instance_key must be the canonical root"]})
 
     def get_name(self) -> str:
         return self.instance_key or ""

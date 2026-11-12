@@ -4,14 +4,13 @@ from typing import Any, ClassVar
 
 from django.db import models
 
-from tap_grid.models import BaseModel
-
+from ._base import TenableNode
 from ._schemas import STATEMENT_STATE, STR, STR_OR_NULL, validated
 
 _DEFINITION = ("defined_ips", "defined_dns_names", "rules", "combinations")
 
 
-class TenableAssetList(BaseModel):
+class TenableAssetList(TenableNode):
     """A Security Center asset list: its name, type and definition as returned.
 
     Risk rules, scans and groups refer to asset lists, so a rule scoped to one needs a node to point
@@ -74,7 +73,7 @@ class TenableAssetList(BaseModel):
         max_length=16, null=True, blank=True, default=None, help_text="current while a complete read reports the list, withdrawn once one no longer does; null when unobserved."
     )
 
-    class Meta(BaseModel.Meta):
+    class Meta(TenableNode.Meta):
         db_table = "tenable_asset_list"
 
     def get_name(self) -> str:

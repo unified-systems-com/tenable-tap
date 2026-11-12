@@ -4,8 +4,7 @@ from typing import Any, ClassVar
 
 from django.db import models
 
-from tap_grid.models import BaseModel
-
+from ._base import TenableNode
 from ._schemas import STR, STR_OR_NULL, validated
 
 #: Plugin fields that hold free text or lists of Tenable's own, stored whole as returned.
@@ -44,7 +43,7 @@ _SHORT = (
 )
 
 
-class TenablePlugin(BaseModel):
+class TenablePlugin(TenableNode):
     """A Tenable plugin as one Security Center reports it, held once and linked from every result it produced.
 
     The plugin's CVE and CPE strings are held here and on no result: they describe the plugin, and
@@ -144,7 +143,7 @@ class TenablePlugin(BaseModel):
         help_text="read when GET /rest/plugin/{id} succeeded; not_read when the plugin was written from its results' fields alone. Null when unobserved.",
     )
 
-    class Meta(BaseModel.Meta):
+    class Meta(TenableNode.Meta):
         db_table = "tenable_plugin"
 
     def get_name(self) -> str:

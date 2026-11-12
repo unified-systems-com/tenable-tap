@@ -121,6 +121,16 @@ class TestSecurityCenter:
 
 
 @pytest.mark.django_db
+@pytest.mark.spec("req-tenable-connection-5")
+@pytest.mark.parametrize("type_slug", sorted(PAYLOADS))
+def test_every_type_refuses_a_non_canonical_instance_key(type_slug):
+    """A key with userinfo, or a second spelling of one console, is refused on every type, not only the console."""
+    payload, _, _ = PAYLOADS[type_slug]
+    for key in ("https://u:secret@sc.example:443", "https://SC.example:443", "https://sc.example"):
+        assert not create_node(type_slug, {**payload, "instance_key": key}).success, key
+
+
+@pytest.mark.django_db
 class TestScanRun:
     @pytest.mark.spec("req-tenable-scanner-run-4")
     def test_only_tabled_warnings_and_counters(self):
@@ -202,6 +212,27 @@ class TestFreeTextCeiling:
 
     def test_output_above_the_ceiling_is_refused(self):
         assert not create_node("tenable__tenable_finding", {**_result(), "plugin_text": "x" * (FREE_TEXT_CEILING_BYTES + 1)}).success
+
+    @pytest.mark.spec("req-tenable-findings-13")
+    @pytest.mark.parametrize(
+        ("type_slug", "field"),
+        [
+            ("tenable__tenable_plugin", "description"),
+            ("tenable__tenable_plugin", "cve"),
+            ("tenable__tenable_observed_program", "evidence"),
+            ("tenable__tenable_asset_list", "rules"),
+            ("tenable__tenable_scan_result", "error_details"),
+            ("tenable__tenable_scan_zone", "ip_list"),
+            ("tenable__tenable_accept_risk_rule", "host_value"),
+        ],
+    )
+    def test_every_text_column_has_the_ceiling(self, type_slug, field):
+        payload, _, _ = PAYLOADS[type_slug]
+        assert not create_node(type_slug, {**payload, field: "x" * (FREE_TEXT_CEILING_BYTES + 1)}).success
+
+    def test_json_columns_have_the_ceiling(self):
+        payload, _, _ = PAYLOADS["tenable__tenable_observed_host"]
+        assert not create_node("tenable__tenable_observed_host", {**payload, "host_summary": {"x": "y" * FREE_TEXT_CEILING_BYTES}}).success
 
     @pytest.mark.spec("req-tenable-findings-13")
     def test_the_same_ceiling_on_audit_columns_and_rule_comments(self):

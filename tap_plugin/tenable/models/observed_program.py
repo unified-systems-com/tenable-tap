@@ -4,12 +4,11 @@ from typing import Any, ClassVar
 
 from django.db import models
 
-from tap_grid.models import BaseModel
-
+from ._base import TenableNode
 from ._schemas import SHA256_HEX, STR, STR_OR_NULL, validated
 
 
-class TenableObservedProgram(BaseModel):
+class TenableObservedProgram(TenableNode):
     """A service Tenable detected on one port of one observed host: an observation, never a `computing_core` program.
 
     A network scan infers the service from how the port answered; it does not see the program. So
@@ -58,7 +57,7 @@ class TenableObservedProgram(BaseModel):
     detecting_plugin_id = models.CharField(max_length=32, null=True, blank=True, default=None, help_text="The plugin whose output named the service (22964 in v0).")
     evidence = models.TextField(null=True, blank=True, default=None, help_text="The exact segment of the plugin output the service was read from.")
 
-    class Meta(BaseModel.Meta):
+    class Meta(TenableNode.Meta):
         db_table = "tenable_observed_program"
 
     def get_name(self) -> str:

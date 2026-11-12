@@ -7,12 +7,9 @@ no entity type and no edges, so it registers nothing.
 
 from typing import Any, ClassVar
 
-from django.core.exceptions import ValidationError
 from django.db import models
 
-from tap_grid.models import BaseModel
-
-from ..identity import text_within_ceiling
+from ._base import TenableNode
 from ._schemas import STATEMENT_STATE, STR, STR_OR_NULL, validated
 
 RULE_CRUD_SCHEMA: dict[str, Any] = {
@@ -33,11 +30,11 @@ RULE_CRUD_SCHEMA: dict[str, Any] = {
     "modified_time": STR_OR_NULL,
     "state": STATEMENT_STATE,
 }
-RULE_VALIDATION_SCHEMA: dict[str, Any] = {**validated(RULE_CRUD_SCHEMA), "comments": {"validation": "function"}}
+RULE_VALIDATION_SCHEMA: dict[str, Any] = validated(RULE_CRUD_SCHEMA)
 RULE_CREATE_REQUIRED = ["instance_key", "rule_id"]
 
 
-class TenableRiskRule(BaseModel):
+class TenableRiskRule(TenableNode):
     """An operator's risk rule in Security Center, as returned: the shared half."""
 
     FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = RULE_VALIDATION_SCHEMA
@@ -67,12 +64,8 @@ class TenableRiskRule(BaseModel):
         help_text="current while a complete read reports the rule, withdrawn once one no longer does; a withdrawn rule is not an assertion to rely on.",
     )
 
-    class Meta(BaseModel.Meta):
+    class Meta(TenableNode.Meta):
         abstract = True
-
-    def validate_comments(self) -> None:
-        if not text_within_ceiling(self.comments):
-            raise ValidationError({"comments": ["comments exceeds the free-text ceiling; cut it and record the cut on the run"]})
 
     def get_name(self) -> str:
         return f"rule {self.rule_id} on plugin {self.plugin_id or 'any'}"[:255] if self.rule_id else ""

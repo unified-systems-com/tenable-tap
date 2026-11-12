@@ -57,7 +57,9 @@ def canonical_root(base_url: str) -> str:
     host = (parts.hostname or "").lower()
     if not host:
         raise ValueError("base_url must name a host")
-    port = parts.port or DEFAULT_PORTS[scheme]
+    if parts.port == 0:
+        raise ValueError("base_url port must not be 0")
+    port = DEFAULT_PORTS[scheme] if parts.port is None else parts.port
     if ":" in host:
         host = f"[{host}]"
     return f"{scheme}://{host}:{port}{parts.path.rstrip('/')}"

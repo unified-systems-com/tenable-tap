@@ -5,15 +5,14 @@ from typing import Any, ClassVar
 from django.core.exceptions import ValidationError
 from django.db import models
 
-from tap_grid.models import BaseModel
-
+from ._base import TenableNode
 from ..identity import UnkeyableError, host_key
 from ._schemas import OBJECT_OR_NULL, SHA256_HEX, STR, STR_OR_NULL, validated
 
 _REPORTED = ("host_uuid", "agent_uuid", "ip", "ips", "dns_name", "netbios_name", "mac_address", "operating_system")
 
 
-class TenableObservedHost(BaseModel):
+class TenableObservedHost(TenableNode):
     """A host as Tenable tracks it in one repository: an observation, never a `computing_core` host.
 
     Keyed by the console and the host key derived from the record's own `hostUniqueness` list, by
@@ -81,11 +80,12 @@ class TenableObservedHost(BaseModel):
         help_text="The host's record from the sumip analysis tool, as returned (last authenticated and unauthenticated scan, OS CPE, ...); null when not read.",
     )
 
-    class Meta(BaseModel.Meta):
+    class Meta(TenableNode.Meta):
         db_table = "tenable_observed_host"
 
     def validate(self) -> None:
-        """The key must say what the columns say (req-tenable-observed-host, req-tenable-findings-11)."""
+        """The key must say what the columns say (req-tenable-observed-host, req-tenable-findings-11), after the checks every node makes."""
+        super().validate()
         try:
             expected = host_key(
                 self.host_uniqueness,

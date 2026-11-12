@@ -2,12 +2,10 @@
 
 from typing import Any, ClassVar
 
-from django.core.exceptions import ValidationError
 from django.db import models
 
-from ..identity import text_within_ceiling
 from ._result import RESULT_CREATE_REQUIRED, RESULT_CRUD_SCHEMA, RESULT_VALIDATION_SCHEMA, TenableResult
-from ._schemas import STR_OR_NULL
+from ._schemas import STR_OR_NULL, validated
 
 #: The documented `cm:compliance-*` elements, each stored as its own column as written
 #: (req-tenable-compliance-results). The column is `cm_` plus the element's suffix.
@@ -43,7 +41,7 @@ class TenableComplianceResult(TenableResult):
     It means something different from a vulnerability and is read differently, so it has its own
     type, keyed like a finding. Its result, policy value and actual value are not structured fields
     in Security Center: they are `cm:` elements inside the plugin output, read by the one shared
-    compliance parser into the `cm_` columns, each up to the free-text ceiling. Mapping a result to
+    compliance parser into the `cm_` columns, each up to the free-text ceiling every Tenable node checks. Mapping a result to
     a compliance control is not done here.
 
     Spec: specs/spec-tenable-v0.md (req-tenable-compliance-results).
@@ -67,10 +65,7 @@ class TenableComplianceResult(TenableResult):
     INBOUND_EDGES: ClassVar[list[dict[str, Any]]] = []
 
     FIELD_CRUD_SCHEMA: ClassVar[dict[str, Any]] = {**RESULT_CRUD_SCHEMA, **_CM_SCHEMA}
-    FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = {
-        **RESULT_VALIDATION_SCHEMA,
-        **{name: {"validation": "function"} for name in CM_COLUMNS},
-    }
+    FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = {**RESULT_VALIDATION_SCHEMA, **validated(_CM_SCHEMA)}
     CREATE_REQUIRED: ClassVar[list[str]] = RESULT_CREATE_REQUIRED
 
     cm_check_name = models.TextField(null=True, blank=True, default=None, help_text="cm:compliance-check-name as written; null when absent.")
@@ -95,67 +90,3 @@ class TenableComplianceResult(TenableResult):
 
     class Meta(TenableResult.Meta):
         db_table = "tenable_compliance_result"
-
-    def _cm_within_ceiling(self, name: str) -> None:
-        value = getattr(self, name)
-        if value is not None and not isinstance(value, str):
-            raise ValidationError({name: [f"{name} must be a string or null"]})
-        if not text_within_ceiling(value):
-            raise ValidationError({name: [f"{name} exceeds the free-text ceiling; cut it and name it in truncated_fields"]})
-
-    def validate_cm_check_name(self) -> None:
-        self._cm_within_ceiling("cm_check_name")
-
-    def validate_cm_check_id(self) -> None:
-        self._cm_within_ceiling("cm_check_id")
-
-    def validate_cm_result(self) -> None:
-        self._cm_within_ceiling("cm_result")
-
-    def validate_cm_actual_value(self) -> None:
-        self._cm_within_ceiling("cm_actual_value")
-
-    def validate_cm_policy_value(self) -> None:
-        self._cm_within_ceiling("cm_policy_value")
-
-    def validate_cm_audit_file(self) -> None:
-        self._cm_within_ceiling("cm_audit_file")
-
-    def validate_cm_benchmark_name(self) -> None:
-        self._cm_within_ceiling("cm_benchmark_name")
-
-    def validate_cm_benchmark_version(self) -> None:
-        self._cm_within_ceiling("cm_benchmark_version")
-
-    def validate_cm_benchmark_profile(self) -> None:
-        self._cm_within_ceiling("cm_benchmark_profile")
-
-    def validate_cm_control_id(self) -> None:
-        self._cm_within_ceiling("cm_control_id")
-
-    def validate_cm_functional_id(self) -> None:
-        self._cm_within_ceiling("cm_functional_id")
-
-    def validate_cm_informational_id(self) -> None:
-        self._cm_within_ceiling("cm_informational_id")
-
-    def validate_cm_full_id(self) -> None:
-        self._cm_within_ceiling("cm_full_id")
-
-    def validate_cm_info(self) -> None:
-        self._cm_within_ceiling("cm_info")
-
-    def validate_cm_reference(self) -> None:
-        self._cm_within_ceiling("cm_reference")
-
-    def validate_cm_see_also(self) -> None:
-        self._cm_within_ceiling("cm_see_also")
-
-    def validate_cm_solution(self) -> None:
-        self._cm_within_ceiling("cm_solution")
-
-    def validate_cm_source(self) -> None:
-        self._cm_within_ceiling("cm_source")
-
-    def validate_cm_error(self) -> None:
-        self._cm_within_ceiling("cm_error")

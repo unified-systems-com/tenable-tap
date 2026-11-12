@@ -4,14 +4,13 @@ from typing import Any, ClassVar
 
 from django.db import models
 
-from tap_grid.models import BaseModel
-
+from ._base import TenableNode
 from ._schemas import STATEMENT_STATE, STR, STR_OR_NULL, validated
 
 _LIFETIMES = ("active_vulns_lifetime", "passive_vulns_lifetime", "compliance_vulns_lifetime", "mitigated_vulns_lifetime")
 
 
-class TenableRepository(BaseModel):
+class TenableRepository(TenableNode):
     """A Security Center repository: where results are kept, read and resolved.
 
     Its data format says how its hosts are told apart and whether its results come from agents.
@@ -87,7 +86,7 @@ class TenableRepository(BaseModel):
         max_length=16, null=True, blank=True, default=None, help_text="current while the repository list reports it, withdrawn once it no longer does; null when unobserved."
     )
 
-    class Meta(BaseModel.Meta):
+    class Meta(TenableNode.Meta):
         db_table = "tenable_repository"
 
     def get_name(self) -> str:

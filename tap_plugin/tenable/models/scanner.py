@@ -4,12 +4,11 @@ from typing import Any, ClassVar
 
 from django.db import models
 
-from tap_grid.models import BaseModel
-
+from ._base import TenableNode
 from ._schemas import STATEMENT_STATE, STR, STR_OR_NULL, validated
 
 
-class TenableScanner(BaseModel):
+class TenableScanner(TenableNode):
     """One scan engine a Security Center drives: a Nessus scanner, a Nessus Manager, or a passive scanner.
 
     One console commonly drives several engines, so the console and its engines are separate
@@ -83,7 +82,7 @@ class TenableScanner(BaseModel):
         max_length=16, null=True, blank=True, default=None, help_text="current while a complete read reports the scanner, withdrawn once one no longer does; null when unobserved."
     )
 
-    class Meta(BaseModel.Meta):
+    class Meta(TenableNode.Meta):
         db_table = "tenable_scanner"
 
     def get_name(self) -> str:

@@ -4,8 +4,7 @@ from typing import Any, ClassVar
 
 from django.db import models
 
-from tap_grid.models import BaseModel
-
+from ._base import TenableNode
 from ._schemas import STR, STR_OR_NULL, validated
 
 #: The scan-result fields stored as returned, by column name.
@@ -40,7 +39,7 @@ _RETURNED = (
 )
 
 
-class TenableScanResult(BaseModel):
+class TenableScanResult(TenableNode):
     """A scan Security Center ran, not a scan definition: when it ran, what it covered, and how its import went.
 
     Read for scans in the configured window. No user's name or contact details are stored: the
@@ -107,7 +106,7 @@ class TenableScanResult(BaseModel):
     details = models.TextField(null=True, blank=True, default=None, help_text="details as returned, which names the scan policy.")
     download_available = models.CharField(max_length=8, null=True, blank=True, default=None, help_text="downloadAvailable as returned.")
 
-    class Meta(BaseModel.Meta):
+    class Meta(TenableNode.Meta):
         db_table = "tenable_scan_result"
 
     def get_name(self) -> str:
