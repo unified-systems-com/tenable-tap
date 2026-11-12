@@ -43,6 +43,11 @@ class TestCanonicalRoot:
             "https://",
             "https://sc.example:0",
             "https://sc.example:70000",
+            "https://sc.example.",
+            "https://sc.example/a/../b",
+            "https://sc.example/./a",
+            "https://sc.example//a",
+            "https://sc.example/a%2Fb",
         ],
     )
     def test_refused_before_any_request(self, url):

@@ -43,8 +43,10 @@ def canonical_root(base_url: str) -> str:
 
     The scheme and host are lower-cased, the port is always written (the scheme's default when
     omitted), and the path is kept as configured without a trailing slash, so one console has one
-    key however its URL is spelled. A URL with userinfo, a query or a fragment, or a scheme other
-    than http or https, is refused (req-tenable-connection-5).
+    key however its URL is spelled. A spelling that could name the same console another way is
+    refused rather than guessed at: userinfo, a query or a fragment, a scheme other than http or
+    https, port 0, a host with a trailing dot, and a path with empty, `.`, `..` or percent-encoded
+    segments (req-tenable-connection-5).
     """
     parts = urlsplit(base_url)
     scheme = parts.scheme.lower()
@@ -57,6 +59,11 @@ def canonical_root(base_url: str) -> str:
     host = (parts.hostname or "").lower()
     if not host:
         raise ValueError("base_url must name a host")
+    if host.endswith("."):
+        raise ValueError("base_url host must not end with a dot")
+    segments = parts.path.rstrip("/").split("/")[1:]
+    if any(segment in ("", ".", "..") for segment in segments) or "%" in parts.path:
+        raise ValueError("base_url path must not hold empty, dot or percent-encoded segments")
     if parts.port == 0:
         raise ValueError("base_url port must not be 0")
     port = DEFAULT_PORTS[scheme] if parts.port is None else parts.port
