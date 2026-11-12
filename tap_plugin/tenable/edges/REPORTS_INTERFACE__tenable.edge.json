@@ -1,0 +1,9 @@
+{
+  "slug": "REPORTS_INTERFACE__tenable",
+  "name": "Reports Interface",
+  "description": "Tenable reports a network interface on an observed host, by the MAC address it read, written only from result paths whose MAC belongs to the host. The target is closed to computing_core's network_interface type, declared in depends_on as a vocabulary dependency.",
+  "sources": ["tenable__tenable_observed_host"],
+  "targets": ["computing_core__network_interface"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "observation"}
+}

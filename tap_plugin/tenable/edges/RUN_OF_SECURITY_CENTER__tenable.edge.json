@@ -1,0 +1,9 @@
+{
+  "slug": "RUN_OF_SECURITY_CENTER__tenable",
+  "name": "Run Of Security Center",
+  "description": "A scan run belongs to the Security Center console it read. Names which console the run's probe, scopes and counters describe.",
+  "sources": ["tenable__tenable_scan_run"],
+  "targets": ["tenable__tenable_security_center"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "run"}
+}

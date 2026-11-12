@@ -1,0 +1,22 @@
+{
+  "slug": "LAST_SEEN_IN_RUN__tenable",
+  "name": "Last Seen In Run",
+  "description": "The collector run that last read this record. One edge per record, moved to the newest run each time and retired from the old run by edge authority on an armed run, so a run never becomes a super-node and earlier runs stay in the grid's history.",
+  "sources": [
+    "tenable__tenable_finding",
+    "tenable__tenable_compliance_result",
+    "tenable__tenable_observed_host",
+    "tenable__tenable_observed_program",
+    "tenable__tenable_repository",
+    "tenable__tenable_scan_result",
+    "tenable__tenable_accept_risk_rule",
+    "tenable__tenable_recast_risk_rule",
+    "tenable__tenable_scanner",
+    "tenable__tenable_scan_zone",
+    "tenable__tenable_plugin_family",
+    "tenable__tenable_asset_list"
+  ],
+  "targets": ["tenable__tenable_scan_run"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "run"}
+}

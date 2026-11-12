@@ -3,15 +3,13 @@ plugin_version = "0.1.0" # x-release-please-version
 requires_tap = ">=0.3.2"
 slug = "tenable"
 name = "TAP Tenable"
-description = "Tenable Security Center vulnerability findings and per-plugin package observations, read from its REST API and held on the grid as Tenable returns them."
+description = "Tenable Security Center's results, plugins, observed hosts and services, consoles, scanners, zones, repositories, scans, asset lists and risk rules, read from its REST API and held on the grid as Tenable returns them."
 
-# Tier-1 load order (req-tap-plugin-arch-dependencies). The Tenable nodes link to computing_core's
-# package (req-tenable-package-link) and compliance_core's vulnerability (req-tenable-vulnerability-link).
-# Nothing in this scaffold imports either yet; the declaration is the plan, and the first change that
-# imports or names a type from them makes it observed. Naming their entity types in edge definitions is a
-# vocabulary dependency (new-plugin Step 6, Tier 1b), declared here with a note.
+# Tier-1 load order (req-tap-plugin-arch-dependencies). The Tenable edges name computing_core's package,
+# ip_address, port and network_interface and compliance_core's vulnerability: a vocabulary dependency
+# (new-plugin Step 6, Tier 1b), declared here with a note. No module imports either plugin.
 depends_on = [
-  { slug = "computing_core", note = "FOUND_IN_PACKAGE__tenable targets computing_core__package, written only when a parser's result is unambiguous; vocabulary dependency" },
+  { slug = "computing_core", note = "FOUND_IN_PACKAGE__tenable targets computing_core__package; ABOUT_PORT, ABOUT_ADDRESS, OBSERVED_AT_ADDRESS, OBSERVED_ON_PORT and REPORTS_INTERFACE target its port, ip_address and network_interface; vocabulary dependency" },
   { slug = "compliance_core", note = "ABOUT_VULNERABILITY__tenable targets compliance_core__compliance_vulnerability, written only against an existing node with the exact id; the plugin writes no compliance_core node; vocabulary dependency" },
 ]
 
@@ -21,6 +19,48 @@ depends_on = [
 # checked: validate_plugin's crypto-providers report is the arbiter, and pydantic's compiled core is unobserved.
 [fips]
 status = "compatible"
+
+[models]
+tenable__tenable_security_center = "tap_plugin.tenable.models.security_center.TenableSecurityCenter"
+tenable__tenable_scan_run = "tap_plugin.tenable.models.scan_run.TenableScanRun"
+tenable__tenable_scanner = "tap_plugin.tenable.models.scanner.TenableScanner"
+tenable__tenable_scan_zone = "tap_plugin.tenable.models.scan_zone.TenableScanZone"
+tenable__tenable_plugin_family = "tap_plugin.tenable.models.plugin_family.TenablePluginFamily"
+tenable__tenable_plugin = "tap_plugin.tenable.models.plugin.TenablePlugin"
+tenable__tenable_repository = "tap_plugin.tenable.models.repository.TenableRepository"
+tenable__tenable_scan_result = "tap_plugin.tenable.models.scan_result.TenableScanResult"
+tenable__tenable_observed_host = "tap_plugin.tenable.models.observed_host.TenableObservedHost"
+tenable__tenable_observed_program = "tap_plugin.tenable.models.observed_program.TenableObservedProgram"
+tenable__tenable_finding = "tap_plugin.tenable.models.finding.TenableFinding"
+tenable__tenable_compliance_result = "tap_plugin.tenable.models.compliance_result.TenableComplianceResult"
+tenable__tenable_accept_risk_rule = "tap_plugin.tenable.models.accept_risk_rule.TenableAcceptRiskRule"
+tenable__tenable_recast_risk_rule = "tap_plugin.tenable.models.recast_risk_rule.TenableRecastRiskRule"
+tenable__tenable_asset_list = "tap_plugin.tenable.models.asset_list.TenableAssetList"
+
+[edges]
+RUN_OF_SECURITY_CENTER__tenable = "edges/RUN_OF_SECURITY_CENTER__tenable.edge.json"
+HELD_BY_SECURITY_CENTER__tenable = "edges/HELD_BY_SECURITY_CENTER__tenable.edge.json"
+RESULT_OF_SECURITY_CENTER__tenable = "edges/RESULT_OF_SECURITY_CENTER__tenable.edge.json"
+MANAGED_BY_SECURITY_CENTER__tenable = "edges/MANAGED_BY_SECURITY_CENTER__tenable.edge.json"
+IN_SCAN_ZONE__tenable = "edges/IN_SCAN_ZONE__tenable.edge.json"
+RUN_BY_SCANNER__tenable = "edges/RUN_BY_SCANNER__tenable.edge.json"
+ABOUT_PLUGIN__tenable = "edges/ABOUT_PLUGIN__tenable.edge.json"
+IN_PLUGIN_FAMILY__tenable = "edges/IN_PLUGIN_FAMILY__tenable.edge.json"
+ABOUT_VULNERABILITY__tenable = "edges/ABOUT_VULNERABILITY__tenable.edge.json"
+FOUND_IN_PACKAGE__tenable = "edges/FOUND_IN_PACKAGE__tenable.edge.json"
+ABOUT_HOST__tenable = "edges/ABOUT_HOST__tenable.edge.json"
+ABOUT_PORT__tenable = "edges/ABOUT_PORT__tenable.edge.json"
+ABOUT_ADDRESS__tenable = "edges/ABOUT_ADDRESS__tenable.edge.json"
+IMPORTED_INTO_REPOSITORY__tenable = "edges/IMPORTED_INTO_REPOSITORY__tenable.edge.json"
+RECORDED_IN_REPOSITORY__tenable = "edges/RECORDED_IN_REPOSITORY__tenable.edge.json"
+OBSERVED_AT_ADDRESS__tenable = "edges/OBSERVED_AT_ADDRESS__tenable.edge.json"
+REPORTS_INTERFACE__tenable = "edges/REPORTS_INTERFACE__tenable.edge.json"
+HOSTS_PROGRAM__tenable = "edges/HOSTS_PROGRAM__tenable.edge.json"
+OBSERVED_ON_PORT__tenable = "edges/OBSERVED_ON_PORT__tenable.edge.json"
+COVERS_PLUGIN__tenable = "edges/COVERS_PLUGIN__tenable.edge.json"
+COVERS_REPOSITORY__tenable = "edges/COVERS_REPOSITORY__tenable.edge.json"
+COVERS_ASSET_LIST__tenable = "edges/COVERS_ASSET_LIST__tenable.edge.json"
+LAST_SEEN_IN_RUN__tenable = "edges/LAST_SEEN_IN_RUN__tenable.edge.json"
 
 [[boot.records]]
 name = "ci"

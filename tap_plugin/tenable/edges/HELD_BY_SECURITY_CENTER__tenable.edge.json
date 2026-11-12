@@ -1,0 +1,9 @@
+{
+  "slug": "HELD_BY_SECURITY_CENTER__tenable",
+  "name": "Held By Security Center",
+  "description": "A repository is held by the Security Center console that keeps its results. Names which console a repository, and every result recorded in it, belongs to.",
+  "sources": ["tenable__tenable_repository"],
+  "targets": ["tenable__tenable_security_center"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "run"}
+}

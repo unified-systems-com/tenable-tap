@@ -1,0 +1,9 @@
+{
+  "slug": "HOSTS_PROGRAM__tenable",
+  "name": "Hosts Program",
+  "description": "An observed host runs a service Tenable detected on one of its ports.",
+  "sources": ["tenable__tenable_observed_host"],
+  "targets": ["tenable__tenable_observed_program"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "observation"}
+}

@@ -1,0 +1,9 @@
+{
+  "slug": "COVERS_ASSET_LIST__tenable",
+  "name": "Covers Asset List",
+  "description": "An accept-risk or recast-risk rule whose host type is asset applies to the hosts of the asset list its host value names.",
+  "sources": ["tenable__tenable_accept_risk_rule", "tenable__tenable_recast_risk_rule"],
+  "targets": ["tenable__tenable_asset_list"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "risk"}
+}

@@ -1,0 +1,9 @@
+{
+  "slug": "MANAGED_BY_SECURITY_CENTER__tenable",
+  "name": "Managed By Security Center",
+  "description": "A scan engine (Nessus scanner, Nessus Manager or passive scanner) is managed by the Security Center console that sends it work and imports its results.",
+  "sources": ["tenable__tenable_scanner"],
+  "targets": ["tenable__tenable_security_center"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "run"}
+}

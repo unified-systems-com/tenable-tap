@@ -1,0 +1,9 @@
+{
+  "slug": "OBSERVED_AT_ADDRESS__tenable",
+  "name": "Observed At Address",
+  "description": "Tenable observed a host at an address on the console's declared network. Tenable owns the edge and retires it when a UUID-keyed host is reported at another address. The target is closed to computing_core's ip_address type, declared in depends_on as a vocabulary dependency.",
+  "sources": ["tenable__tenable_observed_host"],
+  "targets": ["computing_core__ip_address"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "observation"}
+}

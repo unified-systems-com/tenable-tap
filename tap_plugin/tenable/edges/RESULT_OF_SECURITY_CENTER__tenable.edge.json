@@ -1,0 +1,9 @@
+{
+  "slug": "RESULT_OF_SECURITY_CENTER__tenable",
+  "name": "Result Of Security Center",
+  "description": "A scan result was produced by a scan the Security Center console ran. Names which console ran the scan.",
+  "sources": ["tenable__tenable_scan_result"],
+  "targets": ["tenable__tenable_security_center"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "run"}
+}

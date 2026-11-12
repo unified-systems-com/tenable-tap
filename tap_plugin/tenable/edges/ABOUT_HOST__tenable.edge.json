@@ -1,0 +1,9 @@
+{
+  "slug": "ABOUT_HOST__tenable",
+  "name": "About Host",
+  "description": "A finding or compliance result concerns the host Tenable tracks it on, keyed by the same host-uniqueness rule as the result.",
+  "sources": ["tenable__tenable_finding", "tenable__tenable_compliance_result"],
+  "targets": ["tenable__tenable_observed_host"],
+  "identity": {"discriminators": []},
+  "default_dimensions": {"tenable.area": "finding"}
+}
