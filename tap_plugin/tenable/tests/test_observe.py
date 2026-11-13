@@ -338,3 +338,36 @@ def test_every_query_stays_inside_the_envelopes_repository_scope(tmp_path, home)
         assert repos == ["1"], filters
     assert re.search(r"findings repo 2\s+analysis\s+not read", report)
     assert "scope options not applied by this command: min_severity" in report
+
+
+@pytest.mark.spec("req-tenable-observe-3")
+def test_instance_text_in_key_positions_is_never_printed_or_shaped(secrets, home):
+    """A host, an address or an asset name placed where a field name goes is counted, never kept."""
+
+    def keyed(sent):
+        if sent.body["query"]["tool"] == "vulndetails":
+            return ok({"totalRecords": "1", "results": [finding(**{IP: "x", "hostUniqueness": f"repositoryID,{HOST}"})]})
+        return analysis(sent)
+
+    adapter = instance(
+        {
+            ("GET", "/rest/system"): [ok({"version": "6.4.0"}), ok({"version": f"6.4.0 {HOST}"})],
+            ("GET", "/rest/feed"): [ok({"active": {"updateTime": "1"}, HOST: {}})],
+            ("GET", "/rest/repository"): [ok([{"id": "1", "name": ASSET, "dataFormat": "IPv4", ASSET: 1}])],
+            ("GET", "/rest/zone"): [ok({IP: {"name": "x"}})],
+            ("POST", "/rest/analysis"): keyed,
+        }
+    )
+    report, run_dir = observe_run(secrets, home, adapter)
+    shapes = (run_dir / "shapes.json").read_text()
+    for text in (report, shapes):
+        for value in (HOST, IP, ASSET):
+            assert value not in text, value
+    assert observe.OTHER_KEYS in shapes and "version 6.4.0.0 " in report
+
+
+@pytest.mark.spec("req-tenable-probe-3")
+def test_a_repository_id_that_is_not_a_number_ends_the_probe(secrets, home):
+    adapter = instance({("GET", "/rest/repository"): [ok([{"id": HOST, "dataFormat": "IPv4"}])]})
+    report, _ = observe_run(secrets, home, adapter)
+    assert HOST not in report and "numeric id" in report

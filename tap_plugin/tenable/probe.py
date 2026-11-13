@@ -137,8 +137,8 @@ def _repositories(probe: Probe, response: Any) -> None:
     if not isinstance(response, list):
         raise ProbeError("the repository list is not a list")
     for item in response:
-        if not isinstance(item, dict) or _string(item.get("id")) is None:
-            raise ProbeError("a repository entry has no id")
+        if not isinstance(item, dict) or not (_string(item.get("id")) or "").isdigit():
+            raise ProbeError("a repository entry has no numeric id")
         data_format = _string(item.get("dataFormat"))
         repo = Repository(id=str(item["id"]), name=_string(item.get("name")), data_format=data_format, fields=dict(item))
         if data_format in READ_FORMATS:

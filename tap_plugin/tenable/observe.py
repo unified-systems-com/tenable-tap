@@ -94,19 +94,58 @@ def safe(text: Any, limit: int = 160) -> str:
     return cleaned if len(cleaned) <= limit else cleaned[: limit - 3] + "..."
 
 
+#: What a field name looks like. Text the instance chooses (an object key, a hostUniqueness list,
+#: a data format) is printed or saved only when it has this shape: a hostname or address has dots
+#: or colons, an asset name has spaces, so neither survives as a "field name".
+_FIELD_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
+OTHER_KEYS = "<keys that are not field names>"
+NOT_A_FIELD = "<not a field name>"
+
+
+def field_name(text: Any) -> str:
+    """``text`` when it looks like a field name, otherwise a placeholder (req-tenable-observe-3)."""
+    return str(text) if _FIELD_NAME.match(str(text)) else NOT_A_FIELD
+
+
+def field_list(text: Any) -> str:
+    """A comma-separated list of field names, each one passed through :func:`field_name`."""
+    return ",".join(field_name(n.strip()) for n in str(text).split(","))
+
+
+def version_text(version: Any) -> str:
+    """A version as its dotted number only, never the free text around it."""
+    parsed = compat.version_tuple(version)
+    return ".".join(str(p) for p in parsed) if parsed else "unreadable"
+
+
+def _shape_object(items: Any, depth: int, into: dict[str, Any]) -> None:
+    """Shape an object's members into ``into``; keys that are not field names are counted, never kept."""
+    other, other_shape = 0, None
+    for k, v in items:
+        if _FIELD_NAME.match(str(k)):
+            into.setdefault(str(k), shape(v, depth + 1))
+        else:
+            other += 1
+            other_shape = other_shape or shape(v, depth + 1)
+    if other:
+        previous = into.get(OTHER_KEYS, {"count": 0})
+        into[OTHER_KEYS] = {"count": previous["count"] + other, "value": previous.get("value") or other_shape}
+
+
 def shape(value: Any, depth: int = 0) -> Any:
     """The structure of a JSON value with every value removed: field names, types and list lengths."""
     if depth > 12:
         return "..."
     if isinstance(value, dict):
-        return {str(k): shape(v, depth + 1) for k, v in value.items()}
+        out_object: dict[str, Any] = {}
+        _shape_object(value.items(), depth, out_object)
+        return out_object
     if isinstance(value, list):
         merged: dict[str, Any] = {}
         kinds: set[str] = set()
         for item in value[:SHAPE_ITEMS]:
             if isinstance(item, dict):
-                for k, v in item.items():
-                    merged.setdefault(str(k), shape(v, depth + 1))
+                _shape_object(item.items(), depth, merged)
             else:
                 kinds.add(type(item).__name__)
         out: dict[str, Any] = {"list": len(value)}
@@ -259,14 +298,14 @@ def step_probe(ctx: Context) -> bool:
     for name in ("system", "status", "current_user", "current_organization", "feed"):
         ctx.operations_read[name] = f"not read: {ctx.probe.not_read[name]}" if name in ctx.probe.not_read else "read"
     ctx.operations_read["repository_list"] = "read"
-    ctx.lines.append(Line("probe", "probe", "done", note=f"version {safe(ctx.probe.version)} ({ctx.probe.verdict}); {len(ctx.probe.repositories)} repositories"))
+    ctx.lines.append(Line("probe", "probe", "done", note=f"version {version_text(ctx.probe.version)} ({ctx.probe.verdict}); {len(ctx.probe.repositories)} repositories"))
     feed = ctx.probe.feed or {}
     if "feed" in ctx.probe.not_read:
         mark(ctx, "feed-shape", NOT_REACHED, "feed not read")
     elif all(feed.get(k, {}).get("update_time") for k in ("active", "passive")):
         mark(ctx, "feed-shape", SETTLED)
     else:
-        mark(ctx, "feed-shape", CONTRADICTED, f"feed entries: {', '.join(sorted(feed)) or 'none'}")
+        mark(ctx, "feed-shape", CONTRADICTED, f"feed entries: {', '.join(sorted(field_name(k) for k in feed)) or 'none'}")
     lifetimes = ("activeVulnsLifetime", "passiveVulnsLifetime", "complianceVulnsLifetime", "mitigatedVulnsLifetime")
     if ctx.probe.repositories:
         present = all(all(name in r.fields for name in lifetimes) for r in ctx.probe.repositories)
@@ -319,8 +358,8 @@ def step_findings(ctx: Context) -> None:
     known = set(HOST_UNIQUENESS_COLUMNS)
     names = {n.strip() for lists in ctx.uniqueness.values() for hu in lists for n in hu.split(",") if n.strip() and hu != "None"}
     missing = sum(c for lists in ctx.uniqueness.values() for hu, c in lists.items() if hu == "None")
-    mark(ctx, "host-uniqueness", SETTLED if not missing and names <= known else CONTRADICTED, f"lists seen: {sum(len(v) for v in ctx.uniqueness.values())}; unknown names: {', '.join(sorted(names - known)) or 'none'}; records without a list: {missing}")
-    mark(ctx, "host-uniqueness-per-format", SETTLED if all(len(v) <= 1 for v in ctx.uniqueness.values()) else CONTRADICTED, "; ".join(f"{fmt}: {', '.join(safe(k, 60) for k in v)}" for fmt, v in ctx.uniqueness.items()))
+    mark(ctx, "host-uniqueness", SETTLED if not missing and names <= known else CONTRADICTED, f"lists seen: {sum(len(v) for v in ctx.uniqueness.values())}; unknown names: {', '.join(sorted({field_name(n) for n in names - known})) or 'none'}; records without a list: {missing}")
+    mark(ctx, "host-uniqueness-per-format", SETTLED if all(len(v) <= 1 for v in ctx.uniqueness.values()) else CONTRADICTED, "; ".join(f"{field_name(fmt)}: {' | '.join(safe(field_list(k), 60) for k in v)}" for fmt, v in ctx.uniqueness.items()))
     agent_lists = ctx.uniqueness.get("agent")
     if agent_lists:
         mark(ctx, "agent-uuid-field", SETTLED if all("uuid" in hu.split(",") and "agentUUID" not in hu for hu in agent_lists) else CONTRADICTED)
@@ -347,7 +386,7 @@ def step_filters(ctx: Context) -> None:
     _, failure = query(ctx, "valid filter names", analysis.body("vulndetails", "cumulative", start=0, end=1, filters=[analysis.flt("tapProbeUnknownFilter", "1")], version=version))
     # The names are Security Center's vocabulary, not instance data; the message itself is not printed.
     found = re.search(r"valid filters:\s*([A-Za-z0-9_, ]+)", (failure.error_msg or "") if failure is not None else "")
-    ctx.filter_names = sorted({n.strip() for n in found.group(1).split(",") if n.strip()}) if found else []
+    ctx.filter_names = sorted({field_name(n.strip()) for n in found.group(1).split(",") if n.strip()}) if found else []
     expected = {"repositoryIDs", "pluginID", "port", "protocol", "severity", "familyID", "exploitAvailable", "cveID", "asset", "recastRiskStatus", "lastSeen"}
     if ctx.filter_names:
         missing = expected - set(ctx.filter_names)
@@ -372,7 +411,7 @@ def step_rank(ctx: Context) -> None:
     ranked = []
     for record in results_of(reply):
         plugin_id, total = record.get("pluginID"), record.get("total")
-        if plugin_id is not None and str(total).isdigit():
+        if str(plugin_id).isdigit() and str(total).isdigit():
             ranked.append((str(plugin_id), int(total)))
     ctx.plugin_rank = sorted(ranked, key=lambda p: -p[1])[:25]
 
@@ -471,7 +510,7 @@ def render(ctx: Context, ledger: list[dict[str, str]], stdout: TextIO) -> None:
     for warning in ctx.credential.warnings():
         w(f"  WARNING {warning}\n")
     if ctx.probe is not None:
-        w(f"  version {safe(ctx.probe.version)} verdict {ctx.probe.verdict}; warnings: {', '.join(ctx.probe.warnings) or 'none'}\n")
+        w(f"  version {version_text(ctx.probe.version)} verdict {ctx.probe.verdict}; warnings: {', '.join(ctx.probe.warnings) or 'none'}\n")
     scoped = scoped_repository_ids(ctx)
     w(f"  scope: {'repository_ids ' + ', '.join(safe(i, 12) for i in scoped) if scoped else 'every repository the credential sees'}\n")
     others = sorted(k for k in ctx.credential.scope if k != "repository_ids")
@@ -488,7 +527,7 @@ def render(ctx: Context, ledger: list[dict[str, str]], stdout: TextIO) -> None:
     w("\nhostUniqueness lists by repository format\n")
     for fmt, lists in ctx.uniqueness.items():
         for hu, count in lists.items():
-            w(f"  {safe(fmt, 12):12} {safe(hu, 60):60} {count}\n")
+            w(f"  {field_name(fmt)[:12]:12} {safe(field_list(hu), 60):60} {count}\n")
     w("\nPlugins by result count (top 25)\n")
     for plugin_id, total in ctx.plugin_rank:
         w(f"  {safe(plugin_id, 12):12} {total}\n")
