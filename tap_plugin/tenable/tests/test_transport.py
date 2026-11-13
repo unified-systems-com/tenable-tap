@@ -386,3 +386,17 @@ def test_a_second_accept_risk_filter_is_refused(extra):
     with pytest.raises(Refused, match="exactly one acceptRiskStatus"):
         sc.analysis(body)
     assert not any(s.path == "/rest/analysis" for s in adapter.sent)
+
+
+@pytest.mark.spec("req-tenable-transport-4")
+def test_the_construction_read_is_retried_like_any_other():
+    sleep = no_sleep()
+    adapter = FakeAdapter(raise_on={("GET", "/rest/system"): [requests.ConnectionError("down")]})
+    sc, _ = client(adapter, sleep=sleep)
+    sc.connect()
+    assert sc.version == "6.4.0" and sleep.slept == [2]
+    adapter = FakeAdapter(raise_on={("GET", "/rest/system"): [requests.ConnectionError("down")] * 3})
+    sc, _ = client(adapter, sleep=no_sleep())
+    with pytest.raises(ReadFailed, match="connecting failed") as raised:
+        sc.connect()
+    assert raised.value.attempts == 3 and adapter.paths() == ["GET /rest/system"] * 3

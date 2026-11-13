@@ -595,32 +595,46 @@ class SecurityCenterClient:
         """
         from tenable.errors import APIError
 
-        self._session.deadline = self._clock() + self._budget
-        try:
-            self._sc = _guarded_sc_class()(
-                url=self._url,
-                access_key=self._keys.access_key,
-                secret_key=self._keys.secret_key,
-                ssl_verify=self._verify,
-                session=self._session,
-                retries=0,
-                backoff=0,
-                timeout=self._timeout,
-                vendor="unified-systems-com",
-                product="tenable-tap",
-                build="0",
-                error_func=_error_message,
-            )
-        except TransportError as exc:
-            raise ReadFailed(f"{self.qualified}: connecting failed: {type(exc).__name__}") from None
-        except APIError as exc:
-            raise ReadFailed(f"{self.qualified}: connecting failed with HTTP {exc.code}", status=exc.code) from None
-        except ConnectionError:
-            raise ReadFailed(f"{self.qualified}: Security Center reports a version below 5.13, which has no API keys") from None
-        except Exception as exc:  # pyTenable parses the system read itself; any failure there is a failed connect
-            raise ReadFailed(f"{self.qualified}: connecting failed: {type(exc).__name__}") from None
-        finally:
-            self._session.deadline = None
+        started = self._clock()
+        for attempt in range(1, self._max_attempts + 1):
+            remaining = self._budget - (self._clock() - started)
+            if remaining <= 0:
+                raise ReadFailed(f"{self.qualified}: connecting failed: the retry budget ran out", attempts=attempt - 1)
+            self._session.deadline = self._clock() + remaining
+            retry_after: str | None = None
+            try:
+                self._sc = _guarded_sc_class()(
+                    url=self._url,
+                    access_key=self._keys.access_key,
+                    secret_key=self._keys.secret_key,
+                    ssl_verify=self._verify,
+                    session=self._session,
+                    retries=0,
+                    backoff=0,
+                    timeout=self._timeout,
+                    vendor="unified-systems-com",
+                    product="tenable-tap",
+                    build="0",
+                    error_func=_error_message,
+                )
+                break
+            except Transient as exc:
+                # The construction read gets the same bounded retries as every other read.
+                if attempt == self._max_attempts:
+                    raise ReadFailed(f"{self.qualified}: connecting failed: {type(exc).__name__}", attempts=attempt) from None
+            except TransportError as exc:
+                raise ReadFailed(f"{self.qualified}: connecting failed: {type(exc).__name__}", attempts=attempt) from None
+            except APIError as exc:
+                if (exc.code != 429 and not 500 <= exc.code < 600) or attempt == self._max_attempts:
+                    raise ReadFailed(f"{self.qualified}: connecting failed with HTTP {exc.code}", status=exc.code, attempts=attempt) from None
+                retry_after = exc.response.headers.get("retry-after")
+            except ConnectionError:
+                raise ReadFailed(f"{self.qualified}: Security Center reports a version below 5.13, which has no API keys") from None
+            except Exception as exc:  # pyTenable parses the system read itself; any failure there is a failed connect
+                raise ReadFailed(f"{self.qualified}: connecting failed: {type(exc).__name__}") from None
+            finally:
+                self._session.deadline = None
+            self._sleep(self._delay(retry_after, attempt))
         self.version = self._sc._version
 
     def close(self) -> None:

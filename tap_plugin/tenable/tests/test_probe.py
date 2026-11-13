@@ -84,7 +84,7 @@ def test_a_refused_optional_read_is_null_and_the_run_continues(path):
     if path == "/rest/currentOrganization":
         assert found.zone_ids is None
     if path == "/rest/status":
-        assert found.status_read is False
+        assert found.status_read is None
 
 
 @pytest.mark.spec("req-tenable-probe-2")

@@ -166,8 +166,10 @@ def run(client: SecurityCenterClient, credential: Credential, *, now: float) -> 
     if found.warning:
         probe.warnings.append(found.warning)
     if found.below_floor:
-        raise ProbeError(f"Security Center {probe.version} is below the {compat.load()['hard_floor']} floor: it has no API-key authentication")
-    probe.status_read = _read(client, probe, "status") is not None
+        shown = ".".join(str(p) for p in compat.version_tuple(probe.version) or ())
+        raise ProbeError(f"Security Center {shown} is below the {compat.load()['hard_floor']} floor: it has no API-key authentication")
+    # True when read; None (unobserved) when refused or failed, never False (req-tenable-probe-2).
+    probe.status_read = True if _read(client, probe, "status") is not None else None
     user = _read(client, probe, "current_user")
     if isinstance(user, dict):
         probe.user_id = _string(user.get("id"))

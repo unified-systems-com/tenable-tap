@@ -371,3 +371,41 @@ def test_a_repository_id_that_is_not_a_number_ends_the_probe(secrets, home):
     adapter = instance({("GET", "/rest/repository"): [ok([{"id": HOST, "dataFormat": "IPv4"}])]})
     report, _ = observe_run(secrets, home, adapter)
     assert HOST not in report and "numeric id" in report
+
+
+@pytest.mark.spec("req-tenable-observe-3")
+def test_a_dotless_name_in_an_instance_chosen_position_is_never_printed(secrets, home):
+    """A field-name test cannot tell a short host name from a column name, so the report goes by known lists."""
+    name = "server01"
+
+    def keyed(sent):
+        if sent.body["query"]["tool"] == "vulndetails":
+            return ok({"totalRecords": "1", "results": [finding(hostUniqueness=f"repositoryID,{name}")]})
+        return analysis(sent)
+
+    adapter = instance(
+        {
+            ("GET", "/rest/feed"): [ok({"active": {"updateTime": "1"}, name: {}})],
+            ("POST", "/rest/analysis"): keyed,
+        }
+    )
+    report, _ = observe_run(secrets, home, adapter)
+    assert name not in report
+    below = instance({("GET", "/rest/system"): [ok({"version": "6.4.0"}), ok({"version": f"5.12.0 {name}"})]})
+    report, _ = observe_run(secrets, home, below)
+    assert name not in report and "5.12.0.0 is below" in report
+
+
+@pytest.mark.spec("req-tenable-observe-2")
+def test_two_runs_in_one_second_get_separate_directories(secrets, home, monkeypatch):
+    class Frozen:
+        @staticmethod
+        def now(tz=None):
+            from datetime import datetime as real
+
+            return real(2026, 11, 13, 5, 0, 0, tzinfo=tz)
+
+    monkeypatch.setattr(observe, "datetime", Frozen)
+    for _ in range(2):
+        observe.main(["--key", "sc-one"], stdout=io.StringIO(), out_root=home, secrets=secrets, transport=instance(), sleep=no_sleep())
+    assert sorted(p.name for p in (home / observe.RECORDINGS_DIRNAME).iterdir()) == ["sc-one-20261113T050000Z", "sc-one-20261113T050000Z-2"]

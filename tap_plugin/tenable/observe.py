@@ -107,9 +107,19 @@ def field_name(text: Any) -> str:
     return str(text) if _FIELD_NAME.match(str(text)) else NOT_A_FIELD
 
 
-def field_list(text: Any) -> str:
-    """A comma-separated list of field names, each one passed through :func:`field_name`."""
-    return ",".join(field_name(n.strip()) for n in str(text).split(","))
+#: The names the report may print where the instance chooses the text. Anything else is counted,
+#: never printed: a dotless host name passes a field-name test, so the report goes by lists.
+KNOWN_FEEDS = frozenset({"active", "passive", "compliance", "sc", "lce"})
+KNOWN_FORMATS = probe_module.READ_FORMATS | frozenset(probe_module.SKIPPED_FORMATS)
+EXPECTED_FILTERS = frozenset({"repositoryIDs", "pluginID", "port", "protocol", "severity", "familyID", "exploitAvailable", "cveID", "asset", "recastRiskStatus", "lastSeen"})
+
+
+def known_only(names: Any, known: frozenset[str] | set[str]) -> str:
+    """The names in ``known``, in order, and a count of the rest; nothing outside ``known`` is printed."""
+    names = [str(n).strip() for n in names]
+    kept = [n for n in names if n in known]
+    other = len(names) - len(kept)
+    return ", ".join(kept + ([f"{other} other"] if other else [])) or "none"
 
 
 def version_text(version: Any) -> str:
@@ -181,8 +191,16 @@ def _out_dir(credential: Credential, root: Path | None) -> Path:
         raise SystemExit(f"refusing to record inside a git repository: {base}")
     base.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(base, 0o700)
-    out = base / f"{slug}-{stamp}"
-    out.mkdir(mode=0o700)
+    # Two runs in one second share a stamp; the second takes the next free suffix.
+    for n in range(1, 100):
+        out = base / (f"{slug}-{stamp}" if n == 1 else f"{slug}-{stamp}-{n}")
+        try:
+            out.mkdir(mode=0o700)
+            break
+        except FileExistsError:
+            continue
+    else:
+        raise SystemExit(f"refusing to record: no free run directory under {base}")
     if _inside_repository(out.resolve()):
         out.rmdir()
         raise SystemExit(f"refusing to record inside a git repository: {base}")
@@ -305,7 +323,7 @@ def step_probe(ctx: Context) -> bool:
     elif all(feed.get(k, {}).get("update_time") for k in ("active", "passive")):
         mark(ctx, "feed-shape", SETTLED)
     else:
-        mark(ctx, "feed-shape", CONTRADICTED, f"feed entries: {', '.join(sorted(field_name(k) for k in feed)) or 'none'}")
+        mark(ctx, "feed-shape", CONTRADICTED, f"feed entries: {known_only(sorted(feed), KNOWN_FEEDS)}")
     lifetimes = ("activeVulnsLifetime", "passiveVulnsLifetime", "complianceVulnsLifetime", "mitigatedVulnsLifetime")
     if ctx.probe.repositories:
         present = all(all(name in r.fields for name in lifetimes) for r in ctx.probe.repositories)
@@ -358,8 +376,8 @@ def step_findings(ctx: Context) -> None:
     known = set(HOST_UNIQUENESS_COLUMNS)
     names = {n.strip() for lists in ctx.uniqueness.values() for hu in lists for n in hu.split(",") if n.strip() and hu != "None"}
     missing = sum(c for lists in ctx.uniqueness.values() for hu, c in lists.items() if hu == "None")
-    mark(ctx, "host-uniqueness", SETTLED if not missing and names <= known else CONTRADICTED, f"lists seen: {sum(len(v) for v in ctx.uniqueness.values())}; unknown names: {', '.join(sorted({field_name(n) for n in names - known})) or 'none'}; records without a list: {missing}")
-    mark(ctx, "host-uniqueness-per-format", SETTLED if all(len(v) <= 1 for v in ctx.uniqueness.values()) else CONTRADICTED, "; ".join(f"{field_name(fmt)}: {' | '.join(safe(field_list(k), 60) for k in v)}" for fmt, v in ctx.uniqueness.items()))
+    mark(ctx, "host-uniqueness", SETTLED if not missing and names <= known else CONTRADICTED, f"lists seen: {sum(len(v) for v in ctx.uniqueness.values())}; unknown names: {len(names - known)}; records without a list: {missing}")
+    mark(ctx, "host-uniqueness-per-format", SETTLED if all(len(v) <= 1 for v in ctx.uniqueness.values()) else CONTRADICTED, "; ".join(f"{known_only([fmt], KNOWN_FORMATS)}: {' | '.join(safe(known_only(k.split(','), known), 80) for k in v)}" for fmt, v in ctx.uniqueness.items()))
     agent_lists = ctx.uniqueness.get("agent")
     if agent_lists:
         mark(ctx, "agent-uuid-field", SETTLED if all("uuid" in hu.split(",") and "agentUUID" not in hu for hu in agent_lists) else CONTRADICTED)
@@ -387,9 +405,8 @@ def step_filters(ctx: Context) -> None:
     # The names are Security Center's vocabulary, not instance data; the message itself is not printed.
     found = re.search(r"valid filters:\s*([A-Za-z0-9_, ]+)", (failure.error_msg or "") if failure is not None else "")
     ctx.filter_names = sorted({field_name(n.strip()) for n in found.group(1).split(",") if n.strip()}) if found else []
-    expected = {"repositoryIDs", "pluginID", "port", "protocol", "severity", "familyID", "exploitAvailable", "cveID", "asset", "recastRiskStatus", "lastSeen"}
     if ctx.filter_names:
-        missing = expected - set(ctx.filter_names)
+        missing = EXPECTED_FILTERS - set(ctx.filter_names)
         mark(ctx, "valid-filter-names", SETTLED if not missing else CONTRADICTED, f"missing: {', '.join(sorted(missing)) or 'none'}")
     else:
         mark(ctx, "valid-filter-names", NOT_REACHED, "the refusal did not list filter names in a form this command reads; see the saved shape")
@@ -527,12 +544,12 @@ def render(ctx: Context, ledger: list[dict[str, str]], stdout: TextIO) -> None:
     w("\nhostUniqueness lists by repository format\n")
     for fmt, lists in ctx.uniqueness.items():
         for hu, count in lists.items():
-            w(f"  {field_name(fmt)[:12]:12} {safe(field_list(hu), 60):60} {count}\n")
+            w(f"  {known_only([fmt], KNOWN_FORMATS)[:12]:12} {safe(known_only(hu.split(','), set(HOST_UNIQUENESS_COLUMNS)), 60):60} {count}\n")
     w("\nPlugins by result count (top 25)\n")
     for plugin_id, total in ctx.plugin_rank:
         w(f"  {safe(plugin_id, 12):12} {total}\n")
     if ctx.filter_names:
-        w(f"\nValid filter names ({len(ctx.filter_names)}): {safe(', '.join(ctx.filter_names), 2000)}\n")
+        w(f"\nValid filter names ({len(ctx.filter_names)}; the full list is in shapes.json): {known_only(ctx.filter_names, EXPECTED_FILTERS)}\n")
     w("\nAssumptions ledger\n")
     for entry in ledger:
         w(f"  {entry['id']:28} {entry['verdict']:13} {entry['acid']:40} {safe(entry['note'])}\n")
@@ -578,7 +595,7 @@ def run(
         # Both outputs carry text the instance chose (versions, field names, notes), so either key is
         # replaced in them as written, not only in saved bodies (req-tenable-observe-3).
         if out_dir is not None:
-            shapes, _ = credential.redact(json.dumps({"instance_key": credential.instance_key, "responses": ctx.shapes, "ledger": ledger}, indent=2))
+            shapes, _ = credential.redact(json.dumps({"instance_key": credential.instance_key, "responses": ctx.shapes, "filter_names": ctx.filter_names, "ledger": ledger}, indent=2))
             write_private(out_dir / "shapes.json", shapes)
         report = io.StringIO()
         render(ctx, ledger, report)
