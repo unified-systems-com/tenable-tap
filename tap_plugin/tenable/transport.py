@@ -107,7 +107,9 @@ def _fields(*names: str) -> str:
 #: The plugin's one definition of "read" (req-tenable-transport). A change here is a spec change.
 ALLOWLIST: tuple[Operation, ...] = (
     Operation("analysis", "POST", "/rest/analysis", frozenset({MAIN})),
-    Operation("system", "GET", "/rest/system", frozenset({MAIN, ADMIN})),
+    # MAIN only: the administrator client's one system read is pyTenable's unauthenticated version
+    # check at construction, admitted below for any role because it carries no key.
+    Operation("system", "GET", "/rest/system", frozenset({MAIN})),
     Operation("status", "GET", "/rest/status", frozenset({MAIN})),
     Operation("feed", "GET", "/rest/feed", frozenset({MAIN})),
     Operation(
@@ -386,7 +388,8 @@ class GuardedSession(requests.Session):
         op = match(method, path)
         if op is None:
             raise Refused(f"{method} {path} is not on the allowlist")
-        if self._role not in op.roles:
+        unauthenticated_version_check = op.name == "system" and "X-APIKey" not in request.headers
+        if self._role not in op.roles and not unauthenticated_version_check:
             raise Refused(f"{op.name} may not be sent by the {self._role} client")
         if method == "GET":
             check_params(op, parts.query)

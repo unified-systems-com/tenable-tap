@@ -134,11 +134,19 @@ def _out_dir(credential: Credential, root: Path | None) -> Path:
     base = (root or Path.home()) / RECORDINGS_DIRNAME
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     slug = re.sub(r"[^a-z0-9]+", "-", credential.key.lower()).strip("-")[:40] or "instance"
-    out = base / f"{slug}-{stamp}"
-    if _inside_repository(out.parent if out.parent.exists() else base.parent):
+    # A symlinked base would be checked where it points from, not where it writes: refuse it, and
+    # check the resolved path, so no link anywhere above it can lead the recordings into a repository.
+    if base.is_symlink():
+        raise SystemExit(f"refusing to record through a symbolic link: {base}")
+    if _inside_repository(base.resolve()):
         raise SystemExit(f"refusing to record inside a git repository: {base}")
     base.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(base, 0o700)
+    out = base / f"{slug}-{stamp}"
     out.mkdir(mode=0o700)
+    if _inside_repository(out.resolve()):
+        out.rmdir()
+        raise SystemExit(f"refusing to record inside a git repository: {base}")
     return out
 
 

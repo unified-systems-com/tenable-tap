@@ -284,6 +284,10 @@ class TestFieldsPinned:
                 sc.get(name, path_id="1" if name == "plugin" else None)
         with pytest.raises(Refused, match="admin"):
             sc.analysis(good_body())
+        # Its only system read is pyTenable's version check at construction, which carries no key.
+        assert [("X-APIKey" in s.headers) for s in adapter.sent if s.path == "/rest/system"] == [False]
+        with pytest.raises(Refused, match="admin"):
+            sc.get("system")
 
 
 @pytest.mark.spec("req-tenable-transport-9")

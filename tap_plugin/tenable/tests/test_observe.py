@@ -305,3 +305,19 @@ def test_a_key_spelled_with_json_escapes_is_replaced_in_saved_bodies(secrets, ho
     _, run_dir = observe_run(secrets, home, instance({("GET", "/rest/status"): [raw(200, body)]}), "--record-bodies")
     for path in run_dir.iterdir():
         assert ACCESS not in json.dumps(json.loads(path.read_text()), ensure_ascii=False), path.name
+
+
+@pytest.mark.spec("req-tenable-observe-2")
+def test_a_symlink_cannot_lead_recordings_into_a_repository(secrets, tmp_path):
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / "inside").mkdir()
+    linked_base = tmp_path / "home-a"
+    linked_base.mkdir()
+    (linked_base / observe.RECORDINGS_DIRNAME).symlink_to(repo / "inside")
+    linked_root = tmp_path / "home-b"
+    linked_root.symlink_to(repo / "inside")
+    for home, reason in ((linked_base, "symbolic link"), (linked_root, "git repository")):
+        with pytest.raises(SystemExit, match=reason):
+            observe.main(["--key", "sc-one"], stdout=io.StringIO(), out_root=home, secrets=secrets, transport=instance(), sleep=no_sleep())
+    assert list((repo / "inside").iterdir()) == []
