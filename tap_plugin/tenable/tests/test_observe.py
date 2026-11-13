@@ -321,3 +321,20 @@ def test_a_symlink_cannot_lead_recordings_into_a_repository(secrets, tmp_path):
         with pytest.raises(SystemExit, match=reason):
             observe.main(["--key", "sc-one"], stdout=io.StringIO(), out_root=home, secrets=secrets, transport=instance(), sleep=no_sleep())
     assert list((repo / "inside").iterdir()) == []
+
+
+@pytest.mark.spec("req-tenable-observe-1")
+def test_every_query_stays_inside_the_envelopes_repository_scope(tmp_path, home):
+    root = tmp_path / "scoped"
+    root.mkdir()
+    write_envelope(root, envelope_payload("sc-one", scope={"repository_ids": ["1"], "min_severity": 2}))
+    two = ok([{"id": "1", "name": "a", "dataFormat": "IPv4"}, {"id": "2", "name": "b", "dataFormat": "IPv4"}])
+    adapter = instance({("GET", "/rest/repository"): [two]})
+    report, _ = observe_run(root, home, adapter)
+    queries = [s.body["query"]["filters"] for s in adapter.sent if s.path == "/rest/analysis"]
+    assert queries
+    for filters in queries:
+        repos = [f["value"] for f in filters if f["filterName"] == "repositoryIDs"]
+        assert repos == ["1"], filters
+    assert re.search(r"findings repo 2\s+analysis\s+not read", report)
+    assert "scope options not applied by this command: min_severity" in report

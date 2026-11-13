@@ -340,8 +340,13 @@ def check_analysis_body(body: bytes | str | None) -> dict[str, Any]:
     if not isinstance(query, dict) or query.get("type") != "vuln":
         raise Refused("analysis: the query must be a vuln query")
     filters = query.get("filters")
-    if not isinstance(filters, list) or ACCEPT_ALL not in filters:
-        raise Refused("analysis: every query must carry acceptRiskStatus=all")
+    if not isinstance(filters, list) or not all(isinstance(f, dict) for f in filters):
+        raise Refused("analysis: the query filters must be a list of filter objects")
+    # Exactly one acceptRiskStatus filter, and it is ``all``: a second, contradicting one could hide
+    # accepted findings whatever Security Center does with duplicates (req-tenable-transport-9).
+    accept = [f for f in filters if f.get("filterName") == "acceptRiskStatus"]
+    if accept != [ACCEPT_ALL]:
+        raise Refused("analysis: every query must carry exactly one acceptRiskStatus filter, acceptRiskStatus=all")
     return data
 
 

@@ -187,8 +187,22 @@ def fetch(ctx: Context, step: str, operation: str, *, client: SecurityCenterClie
     return reply
 
 
+def scoped_repository_ids(ctx: Context) -> list[str] | None:
+    """The envelope's ``repository_ids`` scope, or None when it names none."""
+    ids = ctx.credential.scope.get("repository_ids")
+    return [str(i) for i in ids] if ids else None
+
+
 def query(ctx: Context, step: str, body: dict[str, Any]) -> tuple[Reply | None, ReadFailed | None]:
-    """One analysis query; returns the reply or the failure, and records either."""
+    """One analysis query; returns the reply or the failure, and records either.
+
+    Every query here is narrowed to the envelope's ``repository_ids`` when it names any: a query
+    that does not already filter on a repository gets the scope's, so no step reads past it.
+    """
+    ids = scoped_repository_ids(ctx)
+    filters = body["query"]["filters"]
+    if ids is not None and not any(f.get("filterName") == "repositoryIDs" for f in filters):
+        filters.insert(0, repo_filter(",".join(ids)))
     try:
         reply = ctx.client.analysis(body)
     except ReadFailed as exc:
@@ -271,7 +285,11 @@ def step_findings(ctx: Context) -> None:
     compliance = False
     with_uuid: set[tuple[str, str, str]] = set()
     without_uuid: set[tuple[str, str, str]] = set()
+    scoped = scoped_repository_ids(ctx)
     for repo in ctx.probe.repositories:
+        if scoped is not None and repo.id not in scoped:
+            ctx.lines.append(Line(f"findings repo {repo.id}", "analysis", "not read", note="outside the envelope's repository_ids scope"))
+            continue
         if repo.treatment != "read":
             ctx.lines.append(Line(f"findings repo {repo.id}", "analysis", "not read", note=repo.reason or repo.treatment))
             continue
@@ -454,6 +472,11 @@ def render(ctx: Context, ledger: list[dict[str, str]], stdout: TextIO) -> None:
         w(f"  WARNING {warning}\n")
     if ctx.probe is not None:
         w(f"  version {safe(ctx.probe.version)} verdict {ctx.probe.verdict}; warnings: {', '.join(ctx.probe.warnings) or 'none'}\n")
+    scoped = scoped_repository_ids(ctx)
+    w(f"  scope: {'repository_ids ' + ', '.join(safe(i, 12) for i in scoped) if scoped else 'every repository the credential sees'}\n")
+    others = sorted(k for k in ctx.credential.scope if k != "repository_ids")
+    if others:
+        w(f"  WARNING scope options not applied by this command: {', '.join(others)}\n")
     w("\nSteps\n")
     for line in ctx.lines:
         extra = f" records={line.records}" if line.records is not None else ""

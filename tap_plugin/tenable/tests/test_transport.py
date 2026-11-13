@@ -374,3 +374,15 @@ def test_the_system_read_at_connect_is_bounded_before_pytenable_parses_it(body):
     sc, _ = client(adapter)
     with pytest.raises(ReadFailed, match="UnboundedResponse"):
         sc.connect()
+
+
+@pytest.mark.spec("req-tenable-transport-9")
+@pytest.mark.parametrize("extra", [analysis.flt("acceptRiskStatus", "unaccepted"), analysis.flt("acceptRiskStatus", "all")])
+def test_a_second_accept_risk_filter_is_refused(extra):
+    body = good_body()
+    body["query"]["filters"].append(extra)
+    adapter = FakeAdapter()
+    sc, _ = client(adapter)
+    with pytest.raises(Refused, match="exactly one acceptRiskStatus"):
+        sc.analysis(body)
+    assert not any(s.path == "/rest/analysis" for s in adapter.sent)
