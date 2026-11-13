@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 import tap_plugin.tenable.models  # noqa: F401 — trigger model registration
 
+from tap_grid.dimension_names import view
 from tap_grid.constraints import InvalidEdgeError
 from tap_grid.models import Entity
 from tap_grid.services import create_edge, create_node
@@ -74,7 +75,7 @@ class TestInternalEdges:
         source, target = INTERNAL[slug]
         edge = create_edge(_node(source), _node(target), slug)
         edge.entity.refresh_from_db()
-        assert edge.entity.dimensions.get("tenable.area") == _definition(slug)["default_dimensions"]["tenable.area"]
+        assert view(edge.entity.dimensions).get("tenable.area") == _definition(slug)["default_dimensions"]["tenable.area"]
 
     def test_reversed_endpoints_refused(self, slug):
         source, target = INTERNAL[slug]

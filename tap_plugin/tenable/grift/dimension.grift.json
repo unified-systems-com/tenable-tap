@@ -1,0 +1,76 @@
+{
+  "metadata": {
+    "grift_version": "0"
+  },
+  "_reserved": {},
+  "batches": [
+    {
+      "batch_entity": {
+        "entity_id": "01a1d54a-cf8a-7742-9eaf-76597c12d7fd",
+        "entity_type": "batch",
+        "name": "tenable dimension vocabulary v0.1.0",
+        "dimensions": {}
+      },
+      "batch_node": {
+        "source": "tenable",
+        "name": "tenable dimension vocabulary v0.1.0",
+        "description": "Dimension nodes for the keys the tenable plugin stamps on the types it owns (req-tenable-shared-facts-6). Dimensions are declared, never created on demand. computing_core's tap.computing.network_name and tap.computing.host are declared by computing_core, never here."
+      },
+      "nodes": [
+        {
+          "entity": {
+            "entity_id": "01a1d54a-cfad-7bcc-926b-baf7d7a7c2ed",
+            "entity_type": "dimension",
+            "name": "tenable.area",
+            "dimensions": {
+              "tap.meta": "dimension"
+            }
+          },
+          "node": {
+            "name": "tenable.area",
+            "description": "Which part of Tenable Security Center a node or edge describes: run (consoles, scanners, zones, repositories, scan runs and results), finding (plugin results), observation (observed hosts and programs), plugin (plugins and families) or risk (accept-risk and recast-risk rules, asset lists). Stamped by every tenable node and edge type through DEFAULT_DIMENSIONS or default_dimensions. Not part of any natural key.",
+            "values": [
+              "finding",
+              "observation",
+              "plugin",
+              "risk",
+              "run"
+            ],
+            "usable_in_keys": false
+          }
+        },
+        {
+          "entity": {
+            "entity_id": "01a1d54a-cfd2-79f7-8a22-84c83d0ce613",
+            "entity_type": "dimension",
+            "name": "tenable.instance",
+            "dimensions": {
+              "tap.meta": "dimension"
+            }
+          },
+          "node": {
+            "name": "tenable.instance",
+            "description": "Which Security Center a Tenable-owned node came from: the console's instance key, its canonical root URL (scheme, lower-cased host and explicit port), stamped by the collector on every Tenable-owned node. Open-valued, one value per console. Not part of any natural key: identity uses the instance_key column, which the generated search can filter, and dimensions are ignored by it.",
+            "usable_in_keys": false
+          }
+        },
+        {
+          "entity": {
+            "entity_id": "01a1d553-f738-7fbd-88f6-2a17f1025764",
+            "entity_type": "dimension",
+            "name": "tenable.scan_result",
+            "dimensions": {
+              "tap.meta": "dimension"
+            }
+          },
+          "node": {
+            "name": "tenable.scan_result",
+            "description": "The newest Tenable scan result whose individual view returned a node: the scan result id, stamped by the collector on findings, compliance results, observed hosts and observed programs. Open-valued. Not part of any natural key.",
+            "usable_in_keys": false
+          }
+        }
+      ],
+      "edges": []
+    }
+  ]
+}
