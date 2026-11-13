@@ -3,7 +3,10 @@
 This is an instrument, not the collector. It reads only through the guarded transport's allowlist
 and writes nothing to the grid. By default it saves SHAPES only: for each response, the status, the
 names of headers that cannot carry a credential, and the field names, types and counts, with no
-values. ``--record-bodies`` also saves each body, parsed and written back out so that no escaped
+values. A JSON object key shaped like a field name is kept as received, because seeing the
+instance's real field names is the point; so a key that is itself instance data (a short host name
+used as a map key) would be kept too. Keys of any other shape are counted, never kept. The file is
+owner-only and never written inside a repository (ruled 2026-11-13, Q57a). ``--record-bodies`` also saves each body, parsed and written back out so that no escaped
 spelling survives, with either key replaced wherever it appears, under an owner-only directory
 outside any repository. The report prints shapes, counts, statuses and the
 assumptions ledger. It never prints a body, a key, or a host or asset name: an instance is named by
