@@ -60,10 +60,10 @@ Nine consequences shape v0:
 
 | RID | Name | Status | Notes |
 | --- | --- | --- | --- |
-| req-tenable-connection | [Connection And Credential](#connection-and-credential) | Proposed | One operator-owned secret envelope per Security Center instance; TLS verification on unless the operator turns it off, and every run that does says so |
-| req-tenable-transport | [The Guarded Transport](#the-guarded-transport) | Proposed | pyTenable's `TenableSC` over a session whose `send` permits only an enumerated list of operations; API keys only |
-| req-tenable-probe | [Probe And Provenance](#probe-and-provenance) | Proposed | Version, status and repositories read first and recorded on the run |
-| req-tenable-upstream-versions | [Supported Upstream Versions](#supported-upstream-versions) | Proposed | A committed file of supported ranges with an evidence level each; the probe's verdict is warn, or error below a hard floor |
+| req-tenable-connection | [Connection And Credential](#connection-and-credential) | In Development | One operator-owned secret envelope per Security Center instance; TLS verification on unless the operator turns it off, and every run that does says so |
+| req-tenable-transport | [The Guarded Transport](#the-guarded-transport) | In Development | pyTenable's `TenableSC` over a session whose `send` permits only an enumerated list of operations; API keys only |
+| req-tenable-probe | [Probe And Provenance](#probe-and-provenance) | In Development | Version, status and repositories read first and recorded on the run |
+| req-tenable-upstream-versions | [Supported Upstream Versions](#supported-upstream-versions) | In Development | A committed file of supported ranges with an evidence level each; the probe's verdict is warn, or error below a hard floor |
 | req-tenable-response-contract | [Response Contract](#response-contract) | Proposed | Hand-written schemas from documented examples, validated before any node is written |
 | req-tenable-states | [Three States And Resolution](#three-states-and-resolution) | Proposed | Not read is never clean; null is unobserved; a run resolves only what it read; aged-out, view changes and identity changes never look like fixes; statements are withdrawn |
 | req-tenable-scope | [Scope Filters](#scope-filters) | Proposed | Server-side filters in the envelope; scope filters versus window filters; the filter recorded on the run |
@@ -85,7 +85,7 @@ Nine consequences shape v0:
 | req-tenable-vulnerability-link | [Shared Vulnerability Link](#shared-vulnerability-link) | Proposed | One edge per CVE from the plugin, never from the finding, only to an existing `compliance_core` vulnerability with that exact id |
 | req-tenable-parsers | [Per-Plugin Package Parsers](#per-plugin-package-parsers) | Proposed | One parser module per plugin, a registry, four parse states, a fixture and a test each |
 | req-tenable-package-link | [Package Link](#package-link) | Proposed | An edge to a `computing_core` package only when a parser's result is unambiguous |
-| req-tenable-observe | [The Observation Command](#the-observation-command) | Proposed | A read-only command that records what an instance returns so shapes are observed before they are parsed |
+| req-tenable-observe | [The Observation Command](#the-observation-command) | In Development | A read-only command that records what an instance returns so shapes are observed before they are parsed |
 | req-tenable-fips | [FIPS Posture](#fips-posture) | Proposed | Declared from what the validator reports; no `cryptography` extra |
 | req-tenable-finding-cve-narrowing | Finding-Level CVE Narrowing | Backlog | Only if a recording shows Security Center reports a host-specific subset of a plugin's CVEs, or a plugin's CVE list differs by host or by configuration, write `ABOUT_VULNERABILITY__tenable` from the finding for just those CVEs; not built unless a need is found |
 | req-tenable-software-enumeration | Host Software Enumeration | Backlog | The `listsoftware` tool parsed into `computing_core` host-package data, as another per-plugin-style parser |
@@ -104,7 +104,7 @@ Nine consequences shape v0:
 ----
 RID: `req-tenable-connection`
 
-Status: `Proposed`
+Status: `In Development`
 
 How the collector knows which Security Center to read and how to authenticate. The base URL, the keys, the TLS settings and the scope filter live together in one operator-owned secret envelope per instance, never in a field on a grid node: whoever can edit a node must not be able to point a credential at another host or quietly narrow what a compliance view sees.
 
@@ -119,6 +119,7 @@ The secret is a plugin secret: its consumer is the Tenable collector, so the env
 - `network_name`: the network the instance's results come from, as a value of `computing_core`'s `tap.computing.network_name` dimension (for example `corp`, or `Internet` for public addresses). Required. It is the network every address and port fact from this instance is written on (`req-tenable-shared-facts`), whether the result came from a network scan or an agent, because it names where the results were gathered, not where the scanner sits. An instance whose results span several networks is not supported in v0, and the plugin cannot detect one: the operator's declaration is trusted, and a wrong one would place overlapping private addresses from another network on this one. That risk is accepted for v0 by the plugin owner (2026-11-12); per-collector (per-repository) network configuration is the later answer, and the envelope description states the constraint.
 - `scope`: the filter object of `req-tenable-scope`. Optional.
 - `scan_result_window_days`: how far back the scan-result list is read (`req-tenable-scan-result`), a positive integer, default `30`. Optional.
+- `feed_stale_days`: how old the active or passive plugin feed may be before the run records `FEED_STALE` (`req-tenable-probe-5`), an integer from 1 to 365, default `7`. Optional.
 - An optional second envelope per console, kind `tenable_sc_admin_credential` (schema `tap_plugin/tenable/schemas/tenable_sc_admin_credential.schema.json`, strict, every field described), holds an administrator's API keys with the same `base_url`, `ssl_verify` and `ca_bundle` fields and names the main envelope's key in `for_key`. It is used only for the inventory reads an organisation user cannot make in full (`GET /rest/scanner`, `/rest/passivescanner`, `/rest/zone`, `/rest/organization`; documented: an organisation user sees only its organisation's agent-capable scanners, with five fields, and `/organization` is admin-only). It never sends an analysis query or any read the main envelope makes. Both envelopes must yield the same `instance_key`, or the admin envelope is refused. Absent, those reads fall back to what the main credential can see, recorded as not visible to this credential (`req-tenable-scanners-zones`). Ruled 2026-11-12 (Q51). Whether an administrator can run analysis at all is undocumented (inferred not); the separation holds either way.
 
 The envelope's description states the least-privilege shape: a read-only role whose reach is limited to the repositories to be read. The collector reads every envelope in scope `tenable`; each yields one Security Center node whose key is derived from the canonical root of `base_url` (`req-tenable-scanner-run-2`). An envelope that fails validation fails only its own run, naming `tenable:<key>`. These credentials have no scannable shape, so no `CredentialPattern` and no entropy rule is added; protection rests on the envelope layer, the leak guard, `.gitignore` and redaction: the keys reach pyTenable as constructor arguments, no object holding them shows them in its `__repr__`, and no log line, scan-run field or exception carries a value.
@@ -127,23 +128,23 @@ The envelope's description states the least-privilege shape: a read-only role wh
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | --- | --- | --- |
-| req-tenable-connection-1 | Settings Are Not Nodes | Proposed | No node type declares an API key, TLS setting or filter field, and the collector reads no connection setting from the grid. The instance's key holds the canonical root as identity (`req-tenable-scanner-run-2`); it is written from the envelope and never read back to decide where to connect. | Ruled 2026-11-12 (Q47c): a key may hold the root. |
-| req-tenable-connection-2 | Secret Never Echoed | Proposed | The keys are absent from logs, scan-run properties and exception text, including when a request fails, and from every `__repr__`. | A test fails a request and searches all of them. |
-| req-tenable-connection-3 | Verification On By Default | Proposed | `ssl_verify` defaults to `true` and the client always passes it explicitly; an absent field never reaches pyTenable's own default of false. | |
-| req-tenable-connection-4 | Disabled Verification Is Recorded | Proposed | A run with `ssl_verify: false` records `TLS_VERIFICATION_DISABLED` on its scan run. | The operator's choice, stated and warned. |
-| req-tenable-connection-5 | Strict Base URL | Proposed | A `base_url` with userinfo, a query or a fragment, port 0, a host with a trailing dot, or a path with empty, `.`, `..` or percent-encoded segments is refused before any request; host and scheme are lower-cased, the port is written explicitly and the path is preserved without a trailing slash, so one instance has one key however its URL is spelled. | Ruled 2026-11-12 (Q47a, Q48a). |
-| req-tenable-connection-6 | One Envelope Per Instance | Proposed | Two main envelopes yielding the same instance key refuse the run before any request, naming both. One organisation's credential per console is a v0 limit; reading several organisations on one console is `req-tenable-multi-org`. | Admin envelopes are counted separately (`-11`). |
-| req-tenable-connection-7 | Strict Credential Schema | Proposed | The `tenable_sc_credential` schema is strict, with no field missing and every field described; a wrong kind or shape fails that instance's run before any request, naming `tenable:<key>` and never a value. | |
-| req-tenable-connection-8 | Undetectability Is Recorded | Proposed | The spec states these credentials have no scannable shape; a test asserts no `CredentialPattern` was added. | Silence would look like coverage. |
-| req-tenable-connection-9 | Plaintext Is Recorded | Proposed | A run whose `base_url` is `http://` records `PLAINTEXT_TRANSPORT` on its scan run, the observation command prints it, and any other scheme is refused before any request. | An HTTP-only instance on an isolated network is the operator's call; it is stated and warned, never silent. |
-| req-tenable-connection-10 | Network Is Declared | Proposed | `network_name` is required and non-empty; an envelope without it fails that instance's run before any request. Its value is recorded on the Security Center node. | Facts from an instance with no declared network would land on a guessed one. |
-| req-tenable-connection-11 | Admin Envelope Is Inventory Only | Proposed | An admin envelope is used only for the scanner, passive-scanner, zone and organization reads, never for analysis or any read the main envelope makes; one whose `instance_key` differs from its `for_key` envelope's is refused, naming both keys and no value. A test sends an analysis query through the admin client and expects a refusal. | Ruled 2026-11-12 (Q51a). |
+| req-tenable-connection-1 | Settings Are Not Nodes | In Development | No node type declares an API key, TLS setting or filter field, and the collector reads no connection setting from the grid. The instance's key holds the canonical root as identity (`req-tenable-scanner-run-2`); it is written from the envelope and never read back to decide where to connect. | Ruled 2026-11-12 (Q47c): a key may hold the root. |
+| req-tenable-connection-2 | Secret Never Echoed | In Development | The keys are absent from logs, scan-run properties and exception text, including when a request fails, and from every `__repr__`. | A test fails a request and searches all of them. |
+| req-tenable-connection-3 | Verification On By Default | In Development | `ssl_verify` defaults to `true` and the client always passes it explicitly; an absent field never reaches pyTenable's own default of false. | |
+| req-tenable-connection-4 | Disabled Verification Is Recorded | In Development | A run with `ssl_verify: false` records `TLS_VERIFICATION_DISABLED` on its scan run. | The operator's choice, stated and warned. |
+| req-tenable-connection-5 | Strict Base URL | In Development | A `base_url` with userinfo, a query or a fragment, port 0, a host with a trailing dot, or a path with empty, `.`, `..` or percent-encoded segments is refused before any request; host and scheme are lower-cased, the port is written explicitly and the path is preserved without a trailing slash, so one instance has one key however its URL is spelled. | Ruled 2026-11-12 (Q47a, Q48a). |
+| req-tenable-connection-6 | One Envelope Per Instance | In Development | Two main envelopes yielding the same instance key refuse the run before any request, naming both. One organisation's credential per console is a v0 limit; reading several organisations on one console is `req-tenable-multi-org`. | Admin envelopes are counted separately (`-11`). |
+| req-tenable-connection-7 | Strict Credential Schema | In Development | The `tenable_sc_credential` schema is strict, with no field missing and every field described; a wrong kind or shape fails that instance's run before any request, naming `tenable:<key>` and never a value. | |
+| req-tenable-connection-8 | Undetectability Is Recorded | In Development | The spec states these credentials have no scannable shape; a test asserts no `CredentialPattern` was added. | Silence would look like coverage. |
+| req-tenable-connection-9 | Plaintext Is Recorded | In Development | A run whose `base_url` is `http://` records `PLAINTEXT_TRANSPORT` on its scan run, the observation command prints it, and any other scheme is refused before any request. | An HTTP-only instance on an isolated network is the operator's call; it is stated and warned, never silent. |
+| req-tenable-connection-10 | Network Is Declared | In Development | `network_name` is required and non-empty; an envelope without it fails that instance's run before any request. Its value is recorded on the Security Center node. | Facts from an instance with no declared network would land on a guessed one. |
+| req-tenable-connection-11 | Admin Envelope Is Inventory Only | In Development | An admin envelope is used only for the scanner, passive-scanner, zone and organization reads, never for analysis or any read the main envelope makes; one whose `instance_key` differs from its `for_key` envelope's is refused, naming both keys and no value. A test sends an analysis query through the admin client and expects a refusal. | Ruled 2026-11-12 (Q51a). |
 
 ### The Guarded Transport
 ----
 RID: `req-tenable-transport`
 
-Status: `Proposed`
+Status: `In Development`
 
 How requests leave the plugin. pyTenable's `TenableSC` is the client; every request it makes passes through a `requests.Session` subclass the plugin supplies, and that subclass decides what may be sent.
 
@@ -156,59 +157,62 @@ The dependency is `pytenable==X.Y.Z` pinned exactly in `pyproject.toml` (a range
 - `GET /rest/scanResult` (the list, with `fields`), and never `/rest/scanResult/{id}/download` in v0 (`req-tenable-nessus-download` is Backlog and would add it by a spec change);
 - `GET /rest/acceptRiskRule` and `GET /rest/recastRiskRule` (the lists, with `fields`);
 - the system and status reads pyTenable and the probe make (`GET /rest/system`, `GET /rest/status`, `GET /rest/repository`), each listed by name;
+- for the administrator envelope only (`req-tenable-connection-11`): `GET /rest/organization`, and the scanner, passive-scanner and zone reads above; each operation names the roles that may send it, and `send` refuses one sent under another;
 - the identity and freshness reads of the probe: `GET /rest/currentUser`, `GET /rest/currentOrganization`, `GET /rest/feed`;
 - the inventory reads: `GET /rest/scanner`, `GET /rest/passivescanner`, `GET /rest/zone` (`req-tenable-scanners-zones`), `GET /rest/pluginFamily` (`req-tenable-plugin-family`), `GET /rest/asset` (`req-tenable-asset-lists`), and `GET /rest/scanResult/{id}` for the scanners that ran a scan (`req-tenable-scan-result`).
 
-Every GET on the list pins one exact `fields` value, written in the allowlist beside its path, and `send` refuses a GET to that path whose `fields` parameter is absent or differs. Documented: `scanner` and `passivescanner` return `username`, `password`, `cert`, `accessKey` and `secretKey`, and `currentUser` returns `password` and `fingerprint`, when `fields` is omitted or broad; pinning keeps a code change from widening a read into secret fields. The pinned lists never name those fields. Every analysis body carries `acceptRiskStatus=all` in its filters: documented, a query with no `acceptRiskStatus` filter excludes accepted results, which would hide every accepted finding and make accepting a risk in Tenable look like a fix (ruled 2026-11-12, Q49a). The scan-result list is read with `timeCompareField=finishTime` so the window is on finish time (documented default: `createdTime`). Responses are bounded before parsing: a response larger than 64 MiB, JSON nested deeper than 64 levels, or a body containing `NaN` or `Infinity` is refused and recorded as not read, and each read has a total time ceiling beside the retry bound.
+Every GET on the list that accepts `fields` pins one exact value, written in the allowlist beside its path, and `send` refuses a GET to that path whose `fields` parameter is absent or differs. `GET /rest/system`, `GET /rest/status` and `GET /rest/feed` take no `fields` parameter, and `send` refuses one sent to them. Any other parameter is refused unless the allowlist names it, as a pinned value or as a free digits-only value (paging offsets, scan-result times). Documented: `scanner` and `passivescanner` return `username`, `password`, `cert`, `accessKey` and `secretKey`, and `currentUser` returns `password` and `fingerprint`, when `fields` is omitted or broad; pinning keeps a code change from widening a read into secret fields. The pinned lists never name those fields. Every analysis body carries `acceptRiskStatus=all` in its filters: documented, a query with no `acceptRiskStatus` filter excludes accepted results, which would hide every accepted finding and make accepting a risk in Tenable look like a fix (ruled 2026-11-12, Q49a). The scan-result list is read with `timeCompareField=finishTime` so the window is on finish time (documented default: `createdTime`). Responses are bounded before parsing: a response larger than 64 MiB, JSON nested deeper than 64 levels, or a body containing `NaN` or `Infinity` is refused and recorded as not read, and each read has a total time ceiling beside the retry bound.
 
 Analysis bodies are built by the collector and sent through the client's request method, not through pyTenable's `analysis.vulns()`: that helper adds an implicit `wasVuln=excludeWas` filter to every cumulative query, a filter Security Center accepts only from 6.2, which would make every read fail on 5.13 to 6.1. The collector adds `wasVuln=excludeWas` itself, and only when the probed version is 6.2 or later, so web-application findings stay out of v0 without breaking older instances.
 
 Authentication is by API keys only (`X-APIKey: accessKey=…; secretKey=…`, Security Center 5.13 or later). pyTenable's session login is `POST /token`, which is not on the allowlist, so that path is unreachable; a Security Center older than 5.13 is not supported (`req-tenable-upstream-versions`). The allowlist is the plugin's one definition of "read", and a change to it is a spec change.
 
+Retries are the plugin's, not pyTenable's: the client is built with `retries=0`, pyTenable's retry and error maps are emptied so it never sleeps on `Retry-After` itself, and its error hook is replaced so it never logs a response body. A refusal is a 401, or a 403 whose `error_code` is not `146`; Security Center answers 403 with `146` for an invalid parameter or filter, which is a bad request and is never recorded as "not visible to this credential". The error message Security Center returns is kept on the failure with both keys replaced and its length bounded, and is never part of a printed message.
+
 #### Acceptance Criteria
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | --- | --- | --- |
-| req-tenable-transport-1 | Allowlist At The Transport | Proposed | Every request passes through one `send` that refuses any method-and-path pair not on the list; `POST /token`, `DELETE`, `PATCH`, an aliased method and a request from another module are each refused. | Negative tests for each; a source scan is only secondary. |
-| req-tenable-transport-2 | Analysis Is Query-Only | Proposed | A `POST /rest/analysis` with a body type other than `vuln` is refused, and `/rest/analysis/download` is never reachable. | |
-| req-tenable-transport-3 | Bound To The Root | Proposed | A request to any other host, port, scheme or path root is refused, and so is any redirect, before a second request. | The session holds the keys. |
-| req-tenable-transport-4 | Bounded Retries | Proposed | Retries are limited in count and total time and honour `Retry-After`; exhaustion is a recorded failure, never an empty result. | Ties to `req-tenable-states`. |
-| req-tenable-transport-5 | Exact Pin, No Crypto Extra | Proposed | `pyproject.toml` pins `pytenable` with `==` and names no extra; a test asserts both. | |
-| req-tenable-transport-6 | Verification Cannot Be Overridden | Proposed | A per-request `verify`, `cert` or `proxies` override is refused by `send`; the CA bundle is applied on the session by the plugin only. | Whether pyTenable honours a session-level `verify` is unobserved; a test settles it. |
-| req-tenable-transport-7 | No Implicit Filters | Proposed | Analysis bodies are built by the plugin; `wasVuln=excludeWas` is sent only to Security Center 6.2 or later, and a test asserts no pyTenable helper adds a filter the plugin did not set. | pyTenable issue 828. |
-| req-tenable-transport-8 | Fields Pinned Per Read | Proposed | Every allowlisted GET carries exactly its pinned `fields` value; a request without it, or with another value, is refused before it is sent; a test asserts no pinned list names `password`, `username`, `cert`, `accessKey`, `secretKey`, `fingerprint` or `encryptionPassword`. | Ruled 2026-11-12 (C15). |
-| req-tenable-transport-9 | Accepted Results Always Read | Proposed | Every analysis body carries `acceptRiskStatus=all`; a test fails a body without it. Whether the default excludes accepted results through the API is confirmed by the observation command. | Ruled 2026-11-12 (Q49a). Documented for the query UI. |
-| req-tenable-transport-10 | Bounded Input | Proposed | A response over the size ceiling, over the depth ceiling or carrying `NaN`/`Infinity` is refused and recorded as not read, never partly stored; a read past its time ceiling is a recorded failure. | Anchore's input limits. |
+| req-tenable-transport-1 | Allowlist At The Transport | In Development | Every request passes through one `send` that refuses any method-and-path pair not on the list; `POST /token`, `DELETE`, `PATCH`, an aliased method and a request from another module are each refused. | Negative tests for each; a source scan is only secondary. |
+| req-tenable-transport-2 | Analysis Is Query-Only | In Development | A `POST /rest/analysis` with a body type other than `vuln` is refused, and `/rest/analysis/download` is never reachable. | |
+| req-tenable-transport-3 | Bound To The Root | In Development | A request to any other host, port, scheme or path root is refused, and so is any redirect, before a second request. | The session holds the keys. |
+| req-tenable-transport-4 | Bounded Retries | In Development | Retries are limited in count and total time and honour `Retry-After`; exhaustion is a recorded failure, never an empty result. | Ties to `req-tenable-states`. |
+| req-tenable-transport-5 | Exact Pin, No Crypto Extra | In Development | `pyproject.toml` pins `pytenable` with `==` and names no extra; a test asserts both. | |
+| req-tenable-transport-6 | Verification Cannot Be Overridden | In Development | A per-request `verify`, `cert` or `proxies` override is refused by `send`; the CA bundle is applied on the session by the plugin only. | Whether pyTenable honours a session-level `verify` is unobserved; a test settles it. |
+| req-tenable-transport-7 | No Implicit Filters | In Development | Analysis bodies are built by the plugin; `wasVuln=excludeWas` is sent only to Security Center 6.2 or later, and a test asserts no pyTenable helper adds a filter the plugin did not set. | pyTenable issue 828. |
+| req-tenable-transport-8 | Fields Pinned Per Read | In Development | Every allowlisted GET that accepts `fields` carries exactly its pinned value, and one that does not accept it carries none; a request without it, with another value or with an unlisted parameter is refused before it is sent; a test asserts no pinned list names `password`, `username`, `cert`, `accessKey`, `secretKey`, `fingerprint` or `encryptionPassword`. | Ruled 2026-11-12 (C15). |
+| req-tenable-transport-9 | Accepted Results Always Read | In Development | Every analysis body carries `acceptRiskStatus=all`; a test fails a body without it. Whether the default excludes accepted results through the API is confirmed by the observation command. | Ruled 2026-11-12 (Q49a). Documented for the query UI. |
+| req-tenable-transport-10 | Bounded Input | In Development | A response over the size ceiling, over the depth ceiling or carrying `NaN`/`Infinity` is refused and recorded as not read, never partly stored; a read past its time ceiling is a recorded failure. | Anchore's input limits. |
 
 ### Probe And Provenance
 ----
 RID: `req-tenable-probe`
 
-Status: `Proposed`
+Status: `In Development`
 
 Before reading data, the collector asks the instance what it is and which repositories its credential can see, and records the answer on the scan run, so a finding can be judged against the data behind it.
 
 #### Implementation
 
-Reads the system and status endpoints and the repository list (`req-tenable-transport`), each optional except the repository list the scope walk needs. It also reads `GET /rest/currentUser` (pinned to the user's id, role, organisation and group, never a name or contact detail), `GET /rest/currentOrganization` (the organisation's id and its zones, readable without admin) and `GET /rest/feed` (the plugin feed's update times; a feed older than a threshold records `FEED_STALE`). The credential's identity and the set of repositories it can see are recorded on the run; when either differs from the previous run's, nothing resolves by absence in that run (`req-tenable-states`). A Security Center managed by Tenable Director, or a Tenable Enclave Security deployment, whose identity reads take another shape (documented: `/mgmt/*` and `/tes/*`), is detected by the probe and the run ends before any data read, recorded as unsupported in v0. Recorded on the scan run: the base URL host, the reported Security Center version, the repositories (id, name, `dataFormat`) and the verdict of `req-tenable-upstream-versions`, each `null` when the instance did not answer. An unreadable version is `null` and never a pass. Each repository becomes a node (`req-tenable-repository`). Repositories whose `dataFormat` is `IPv4`, `IPv6`, `agent` or `universal` are read; `mobile` repositories are not read in v0 and are listed as not read with that reason. A repository with any other `dataFormat` is recorded as read-with-unknown-format and its results are not stored (`req-tenable-probe-6`).
+Reads the system and status endpoints and the repository list (`req-tenable-transport`), each optional except the repository list the scope walk needs. It also reads `GET /rest/currentUser` (pinned to the user's id, role, organisation and group, never a name or contact detail), `GET /rest/currentOrganization` (the organisation's id and its zones, readable without admin) and `GET /rest/feed` (the plugin feed's update times; an active or passive feed older than the envelope's `feed_stale_days`, or one Security Center itself flags stale, records `FEED_STALE`). The credential's identity and the set of repositories it can see are recorded on the run; when either differs from the previous run's, nothing resolves by absence in that run (`req-tenable-states`). A Security Center managed by Tenable Director, or a Tenable Enclave Security deployment, whose identity reads take another shape (documented: `/mgmt/*` and `/tes/*`), is detected by the probe and the run ends before any data read, recorded as unsupported in v0. Recorded on the scan run: the base URL host, the reported Security Center version, the repositories (id, name, `dataFormat`) and the verdict of `req-tenable-upstream-versions`, each `null` when the instance did not answer. An unreadable version is `null` and never a pass. Each repository becomes a node (`req-tenable-repository`). Repositories whose `dataFormat` is `IPv4`, `IPv6`, `agent` or `universal` are read; `mobile` repositories are not read in v0 and are listed as not read with that reason. A repository with any other `dataFormat` is recorded as read-with-unknown-format and its results are not stored (`req-tenable-probe-6`).
 
 #### Acceptance Criteria
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | --- | --- | --- |
-| req-tenable-probe-1 | Probe Before Data | Proposed | The probe completes before any finding is read, and its results are on the scan run. | |
-| req-tenable-probe-2 | A Refused Probe Is Null | Proposed | An optional probe read the instance refuses leaves its field `null` and the run continues. | |
-| req-tenable-probe-3 | Repository List Is Required | Proposed | A run that cannot read the repository list ends before any scope is read, recorded as an error. | |
-| req-tenable-probe-4 | Credential Identity Recorded | Proposed | The run records the credential's user id, role, organisation id and group id and the repositories it can see, and never a user name or contact detail; a change from the previous run is recorded and blocks resolution by absence. | Ruled 2026-11-12 (Q49c). An admin narrowing the group would otherwise look like a fix. |
-| req-tenable-probe-5 | Feed Freshness | Proposed | The plugin feed's update times are recorded on the run, and a feed older than the configured threshold records `FEED_STALE`; a feed read refused is `null`, never fresh. | Anchore's `FEED_STALE`. |
-| req-tenable-probe-6 | Unknown Data Format | Proposed | A repository whose `dataFormat` is not `IPv4`, `IPv6`, `agent`, `universal` or `mobile` is recorded as read-with-unknown-format; its results are not stored and nothing in it resolves. | Separate from unkeyable entries (`req-tenable-findings-3`). |
-| req-tenable-probe-7 | Unsupported Deployments Refused | Proposed | A Director-managed or Enclave Security deployment detected by the probe ends the run before any data read, recorded as unsupported. | v0 targets a plain Security Center. |
+| req-tenable-probe-1 | Probe Before Data | In Development | The probe completes before any finding is read, and its results are on the scan run. | |
+| req-tenable-probe-2 | A Refused Probe Is Null | In Development | An optional probe read the instance refuses leaves its field `null` and the run continues. | |
+| req-tenable-probe-3 | Repository List Is Required | In Development | A run that cannot read the repository list ends before any scope is read, recorded as an error. | |
+| req-tenable-probe-4 | Credential Identity Recorded | In Development | The run records the credential's user id, role, organisation id and group id and the repositories it can see, and never a user name or contact detail; a change from the previous run is recorded and blocks resolution by absence. | Ruled 2026-11-12 (Q49c). An admin narrowing the group would otherwise look like a fix. |
+| req-tenable-probe-5 | Feed Freshness | In Development | The plugin feed's update times are recorded on the run, and a feed older than the configured threshold records `FEED_STALE`; a feed read refused is `null`, never fresh. | Anchore's `FEED_STALE`. |
+| req-tenable-probe-6 | Unknown Data Format | In Development | A repository whose `dataFormat` is not `IPv4`, `IPv6`, `agent`, `universal` or `mobile` is recorded as read-with-unknown-format; its results are not stored and nothing in it resolves. | Separate from unkeyable entries (`req-tenable-findings-3`). |
+| req-tenable-probe-7 | Unsupported Deployments Refused | Proposed | A Director-managed or Enclave Security deployment detected by the probe ends the run before any data read, recorded as unsupported. | v0 targets a plain Security Center. Not built: no documented signal in the probe's reads tells such a deployment apart, so detection waits on a recording from one (observation ledger `director-detection`). |
 
 ### Supported Upstream Versions
 ----
 RID: `req-tenable-upstream-versions`
 
-Status: `Proposed`
+Status: `In Development`
 
 Which upstream versions this plugin is known to work with, and on what evidence, as a committed data file. The manifest has no field for this (it rejects unknown keys, and its only compatibility field is `requires_tap`), so the plugin carries it; a core manifest field is a separate proposal, and this file is shaped so it can move there unchanged.
 
@@ -227,11 +231,11 @@ A version below the hard floor (no API-key authentication, so the credential can
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | --- | --- | --- |
-| req-tenable-upstream-versions-1 | Data, Schema-Validated | Proposed | The file validates against its schema, every entry has a `description`, and a specifier with no upper bound is rejected. | Grafana's open-ended range failed on a newer release. |
-| req-tenable-upstream-versions-2 | Evidence Cannot Be Claimed | Proposed | An entry with evidence `observed` names a date and a recorded response; a test rejects one that does not. | We are blind; nothing starts observed. |
-| req-tenable-upstream-versions-3 | Four-State Verdict | Proposed | The scan run carries exactly one of observed, documented-only, outside, unreadable. | Three states, never two. |
-| req-tenable-upstream-versions-4 | Warn, Do Not Refuse | Proposed | An outside version is a recorded warning and the run continues; only a version below the hard floor is an error. | |
-| req-tenable-upstream-versions-5 | Derived Once | Proposed | The README table is generated from the file, and a test fails when they differ. | |
+| req-tenable-upstream-versions-1 | Data, Schema-Validated | In Development | The file validates against its schema, every entry has a `description`, and a specifier with no upper bound is rejected. | Grafana's open-ended range failed on a newer release. |
+| req-tenable-upstream-versions-2 | Evidence Cannot Be Claimed | In Development | An entry with evidence `observed` names a date and a recorded response; a test rejects one that does not. | We are blind; nothing starts observed. |
+| req-tenable-upstream-versions-3 | Four-State Verdict | In Development | The scan run carries exactly one of observed, documented-only, outside, unreadable. | Three states, never two. |
+| req-tenable-upstream-versions-4 | Warn, Do Not Refuse | In Development | An outside version is a recorded warning and the run continues; only a version below the hard floor is an error. | |
+| req-tenable-upstream-versions-5 | Derived Once | In Development | The README table is generated from the file, and a test fails when they differ. | |
 
 ### Response Contract
 ----
@@ -328,7 +332,7 @@ The `scope` object in the envelope (`req-tenable-connection`). Every option is a
 | `ports`, `protocols` | `port`, `protocol` | scope |
 | `exploit_available` | `exploitAvailable` | non-resolving |
 | `has_cve` | `cveID` | non-resolving |
-| `risk_status` | `acceptRiskStatus`, `recastRiskStatus` | non-resolving |
+| `recast_risk_status` | `recastRiskStatus` (`recast` or `notRecast`); `acceptRiskStatus` is not an option, because every query carries `acceptRiskStatus=all` (`req-tenable-transport-9`) | non-resolving |
 | `last_seen_within` | `lastSeen` | **window** |
 | `max_records` | a ceiling per repository | safety |
 
@@ -340,7 +344,7 @@ Every run reads both the cumulative and the patched view of each repository with
 | --- | --- | --- | --- | --- |
 | req-tenable-scope-1 | Filter In The Envelope | Proposed | The filter is read only from the operator-owned envelope and never from a node. | |
 | req-tenable-scope-2 | Filter Recorded On The Run | Proposed | The scan run records the canonical filter exactly as applied and whether the run was incremental. | |
-| req-tenable-scope-3 | Window And Non-Resolving Never Infer | Proposed | A run using `last_seen_within`, `asset_ids`, `min_severity`, `exploit_available`, `has_cve`, `risk_status` or `plugin_families` resolves no result by absence (`not_reported`), and is recorded as incremental with the filter responsible; Tenable's own mitigation statements still apply (`req-tenable-mitigation-5`). | A filter of unknown kind is non-resolving. |
+| req-tenable-scope-3 | Window And Non-Resolving Never Infer | Proposed | A run using `last_seen_within`, `asset_ids`, `min_severity`, `exploit_available`, `has_cve`, `recast_risk_status` or `plugin_families` resolves no result by absence (`not_reported`), and is recorded as incremental with the filter responsible; Tenable's own mitigation statements still apply (`req-tenable-mitigation-5`). | A filter of unknown kind is non-resolving. |
 | req-tenable-scope-4 | Scope Resolves Only In Scope | Proposed | With scope filters alone, a finding resolves only if its stored key components satisfy every filter; a filter over a mutable attribute or an unstored fact cannot be a scope filter. | A finding outside the filter keeps what it had. |
 | req-tenable-scope-5 | Invalid Filter Refuses | Proposed | An unknown option, a bad value or a rejected filter ends the run before any read; it never falls back to an unfiltered read. | |
 | req-tenable-scope-6 | Ceiling Is A Recorded Stop | Proposed | Reaching `max_records` records the repository as possibly truncated and resolves nothing in it. | Ties to `req-tenable-states-4`. |
@@ -789,7 +793,7 @@ Which collector run last read each observation, kept as one edge per observation
 ----
 RID: `req-tenable-observe`
 
-Status: `Proposed`
+Status: `In Development`
 
 An instrument for the first sessions against a real instance, and for any later one: it reads an instance through the guarded transport in a fixed order, records every raw response locally, and reports which assumptions the responses settled. It is not the collector and writes nothing to the grid. It exists so shapes are observed before they are parsed.
 
@@ -801,16 +805,16 @@ An instrument for the first sessions against a real instance, and for any later 
 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | --- | --- | --- |
-| req-tenable-observe-1 | Only The Allowlist | Proposed | Every request passes the transport's allowlist; a path outside it is refused before any request. | |
-| req-tenable-observe-2 | Local And Private | Proposed | Recordings are written outside any repository with owner-only permissions, and nothing is written to the grid. | The repository is public. |
-| req-tenable-observe-3 | Nothing Sensitive Printed; Shapes By Default | Proposed | The report and recordings contain no key in any form, and the report contains no body, hostname, IP or asset name; text from an instance is stripped of non-printable characters and bounded before printing. Without `--record-bodies`, nothing saved holds a `pluginText` value or a host or asset name. | |
-| req-tenable-observe-4 | Not Read Is Recorded | Proposed | A step that cannot run is recorded as not read with the reason, never as empty. | |
-| req-tenable-observe-5 | Dry Run Sends Nothing | Proposed | `--dry-run` and `--list` send no request. | |
-| req-tenable-observe-6 | Ranks Plugins For Parsers | Proposed | The report ranks plugin ids by finding count so parsers are written for what the instance actually returns. | |
-| req-tenable-observe-7 | Raw Bodies Are Opt-In | Proposed | Raw bodies are saved only under `--record-bodies`, in an owner-only directory the command refuses to create inside a repository, with the path printed and a deletion reminder; a fixture is committed only from a trimmed copy the operator has reviewed. | Raw plugin output can carry credentials. |
-| req-tenable-observe-8 | Echoed Keys Replaced | Proposed | Under `--record-bodies`, a response echoing either key has it replaced before saving, and the report counts replacements; a test feeds an echoing fixture. | Anchore's `observe-3`. |
-| req-tenable-observe-9 | Every Operation Accounted For | Proposed | The report lists every allowlisted operation as read or not read with the reason; a test fails when the allowlist gains an operation the command does not account for. | Anchore's `observe-6`. |
-| req-tenable-observe-10 | Assumptions Ledger | Proposed | The ledger file lists every open assumption with its dependent ACID, and the report marks each settled, contradicted or not reached. | Makes "observed" checkable. |
+| req-tenable-observe-1 | Only The Allowlist | In Development | Every request passes the transport's allowlist; a path outside it is refused before any request. | |
+| req-tenable-observe-2 | Local And Private | In Development | Recordings are written outside any repository with owner-only permissions, and nothing is written to the grid. | The repository is public. |
+| req-tenable-observe-3 | Nothing Sensitive Printed; Shapes By Default | In Development | The report and recordings contain no key in any form, and the report contains no body, hostname, IP or asset name; text from an instance is stripped of non-printable characters and bounded before printing. Without `--record-bodies`, nothing saved holds a `pluginText` value or a host or asset name. | |
+| req-tenable-observe-4 | Not Read Is Recorded | In Development | A step that cannot run is recorded as not read with the reason, never as empty. | |
+| req-tenable-observe-5 | Dry Run Sends Nothing | In Development | `--dry-run` and `--list` send no request. | |
+| req-tenable-observe-6 | Ranks Plugins For Parsers | In Development | The report ranks plugin ids by finding count so parsers are written for what the instance actually returns. | |
+| req-tenable-observe-7 | Raw Bodies Are Opt-In | In Development | Raw bodies are saved only under `--record-bodies`, in an owner-only directory the command refuses to create inside a repository, with the path printed and a deletion reminder; a fixture is committed only from a trimmed copy the operator has reviewed. | Raw plugin output can carry credentials. |
+| req-tenable-observe-8 | Echoed Keys Replaced | In Development | Under `--record-bodies`, a response echoing either key has it replaced before saving, and the report counts replacements; a test feeds an echoing fixture. | Anchore's `observe-3`. |
+| req-tenable-observe-9 | Every Operation Accounted For | In Development | The report lists every allowlisted operation as read or not read with the reason; a test fails when the allowlist gains an operation the command does not account for. | Anchore's `observe-6`. |
+| req-tenable-observe-10 | Assumptions Ledger | In Development | The ledger file lists every open assumption with its dependent ACID, and the report marks each settled, contradicted or not reached. | Makes "observed" checkable. |
 
 ### FIPS Posture
 ----
