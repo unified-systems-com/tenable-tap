@@ -700,7 +700,9 @@ class SecurityCenterClient:
             return None, None
         message = data.get("error_msg")
         if isinstance(message, str):
-            message, _ = self._keys.redact(message[:MAX_ERROR_MSG])
+            # Redact before truncating: a key straddling the limit would otherwise survive as a fragment.
+            message, _ = self._keys.redact(message)
+            message = message[:MAX_ERROR_MSG]
         else:
             message = None
         return data["error_code"], message

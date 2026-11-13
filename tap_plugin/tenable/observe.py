@@ -3,8 +3,9 @@
 This is an instrument, not the collector. It reads only through the guarded transport's allowlist
 and writes nothing to the grid. By default it saves SHAPES only: for each response, the status, the
 names of headers that cannot carry a credential, and the field names, types and counts, with no
-values. ``--record-bodies`` also saves each body, with either key replaced wherever it appears, under
-an owner-only directory outside any repository. The report prints shapes, counts, statuses and the
+values. ``--record-bodies`` also saves each body, parsed and written back out so that no escaped
+spelling survives, with either key replaced wherever it appears, under an owner-only directory
+outside any repository. The report prints shapes, counts, statuses and the
 assumptions ledger. It never prints a body, a key, or a host or asset name: an instance is named by
 its envelope key, and its address appears only in the owner-only ``shapes.json``.
 
@@ -153,9 +154,11 @@ def _save(ctx: Context, step: str, reply: Reply | None, failure: ReadFailed | No
     if ctx.out_dir is None:
         return
     if ctx.record_bodies and reply is not None:
-        body, count = ctx.credential.redact_bytes(reply.body)
+        # The parsed body, written back out, not the raw bytes: JSON can spell a key with escapes
+        # (\u0061ccess...) that a byte replacement misses and a later parse rebuilds.
+        body, count = ctx.credential.redact(json.dumps(reply.data, indent=1, ensure_ascii=False))
         ctx.redactions += count
-        write_private(ctx.out_dir / f"{ctx.counter:03d}-{re.sub(r'[^a-z0-9]+', '-', step.lower())}.json", body.decode("utf-8", "replace"))
+        write_private(ctx.out_dir / f"{ctx.counter:03d}-{re.sub(r'[^a-z0-9]+', '-', step.lower())}.json", body)
 
 
 def fetch(ctx: Context, step: str, operation: str, *, client: SecurityCenterClient | None = None, path_id: str | None = None, params: dict[str, str] | None = None) -> Reply | None:

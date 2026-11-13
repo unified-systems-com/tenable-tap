@@ -296,3 +296,12 @@ def test_a_refused_probe_read_is_recorded_as_failed_not_absent(secrets, home):
     responses = json.loads((run_dir / "shapes.json").read_text())["responses"]
     feed = [r for r in responses.values() if r["step"] == "probe feed"]
     assert feed and feed[0]["status"] == 403 and feed[0]["failed"]
+
+
+@pytest.mark.spec("req-tenable-observe-8")
+def test_a_key_spelled_with_json_escapes_is_replaced_in_saved_bodies(secrets, home):
+    escaped = "".join(f"\\u{ord(ch):04x}" for ch in ACCESS)
+    body = '{"type": "regular", "error_code": 0, "error_msg": "", "warnings": [], "timestamp": 0, "response": {"jobd": "' + escaped + '"}}'
+    _, run_dir = observe_run(secrets, home, instance({("GET", "/rest/status"): [raw(200, body)]}), "--record-bodies")
+    for path in run_dir.iterdir():
+        assert ACCESS not in json.dumps(json.loads(path.read_text()), ensure_ascii=False), path.name

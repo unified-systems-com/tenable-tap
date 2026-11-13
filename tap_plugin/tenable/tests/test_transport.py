@@ -348,3 +348,16 @@ def test_keys_never_reach_an_error_a_log_or_a_repr(caplog):
     text = " ".join(messages) + caplog.text + repr(sc) + repr(sc._session)
     assert ACCESS not in text and SECRET not in text
     assert not re.search(r"secretKey=\w", text)
+
+
+@pytest.mark.spec("req-tenable-connection-2")
+def test_a_key_straddling_the_error_message_limit_leaves_no_fragment():
+    from tap_plugin.tenable.transport import MAX_ERROR_MSG
+
+    message = "x" * (MAX_ERROR_MSG - 5) + SECRET
+    adapter = FakeAdapter(routes={("GET", "/rest/status"): [raw(500, json.dumps({"error_code": 1, "error_msg": message}))]})
+    sc, _ = client(adapter)
+    with pytest.raises(ReadFailed) as raised:
+        sc.get("status")
+    kept = raised.value.error_msg or ""
+    assert len(kept) <= MAX_ERROR_MSG and SECRET[:5] not in kept
