@@ -66,6 +66,14 @@ class TestStrictSchema:
 
             walk(schema, path.name)
 
+    def test_a_wrong_kind_or_scope_is_refused_without_echoing_it(self):
+        for field in ("kind", "scope"):
+            payload = envelope_payload()
+            payload[field] = ACCESS
+            with pytest.raises(cred.CredentialError, match=field) as raised:
+                cred.credential_from_envelope(envelope(payload))
+            assert ACCESS not in str(raised.value)
+
     def test_wrong_kind_and_scope_are_refused(self):
         payload = envelope_payload()
         payload["kind"] = "anchore_api_credential"

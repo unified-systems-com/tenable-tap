@@ -198,11 +198,13 @@ def _schema_reason(kind: str, exc: jsonschema.ValidationError) -> str:
 
 def _validated(envelope: SecretEnvelope, kind: str, schema_path: Path) -> tuple[dict[str, Any], str]:
     """Check scope, kind and schema, and derive the instance key; returns the data and the key."""
-    qualified = envelope.qualified
+    # Named under this plugin's scope, never the envelope's own scope field, which may be anything.
+    qualified = f"{SCOPE}:{envelope.key}"
     if envelope.scope != SCOPE:
-        raise CredentialError(qualified, f"scope is {envelope.scope!r}, expected {SCOPE!r}")
+        # Never echo the value: an envelope's metadata is operator-written and unvalidated here.
+        raise CredentialError(qualified, f"scope is not {SCOPE!r}")
     if envelope.kind != kind:
-        raise CredentialError(qualified, f"kind is {envelope.kind!r}, expected {kind!r}")
+        raise CredentialError(qualified, f"kind is not {kind!r}")
     data = dict(envelope.data)
     try:
         jsonschema.validate(data, _schema(schema_path))
