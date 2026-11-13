@@ -107,19 +107,30 @@ def _feed(probe: Probe, response: Any, stale_days: int, now: float) -> None:
         return
     feeds: dict[str, dict[str, Any]] = {}
     stale = False
+    dated: set[str] = set()
     for name, entry in response.items():
         if not isinstance(entry, dict):
             continue
         updated = _string(entry.get("updateTime"))
         feeds[name] = {"update_time": updated, "stale": _string(entry.get("stale")), "update_running": _string(entry.get("updateRunning"))}
-        if name in ("active", "passive") and str(entry.get("stale", "")).lower() == "true":
+        if name not in ("active", "passive"):
+            continue
+        if str(entry.get("stale", "")).lower() == "true":
             stale = True
-        if name in ("active", "passive") and updated and updated.isdigit() and int(updated) > 0 and now - int(updated) > stale_days * 86400:
-            stale = True
+        if updated and updated.isdigit() and int(updated) > 0:
+            dated.add(name)
+            if now - int(updated) > stale_days * 86400:
+                stale = True
     probe.feed = feeds
-    probe.feed_stale = stale
     if stale:
+        probe.feed_stale = True
         probe.warnings.append("FEED_STALE")
+    elif dated == {"active", "passive"}:
+        probe.feed_stale = False
+    else:
+        # Read, but without a readable update time for both: freshness is unobserved, never fresh
+        # (req-tenable-probe-5). The read itself succeeded, so it is not "not read".
+        probe.feed_stale = None
 
 
 def _repositories(probe: Probe, response: Any) -> None:

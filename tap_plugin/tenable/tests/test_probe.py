@@ -173,3 +173,18 @@ def test_a_version_below_the_floor_ends_the_probe_and_an_outside_one_warns():
     r[("GET", "/rest/system")] = [ok({"version": "6.4.0"}), ok({"version": "5.12.0"})]
     with pytest.raises(probe.ProbeError, match="below the 5.13 floor"):
         run(r)
+
+
+@pytest.mark.spec("req-tenable-probe-5")
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"active": {}, "passive": {}},
+        {"active": {"updateTime": "soon"}, "passive": {"updateTime": str(NOW - DAY)}},
+        {"active": {"updateTime": str(NOW - DAY)}},
+        {"sc": {"updateTime": str(NOW - DAY)}},
+    ],
+)
+def test_a_feed_without_readable_update_times_is_unobserved_never_fresh(payload):
+    found, _ = run(routes(**{"/rest/feed": ok(payload)}))
+    assert found.feed_stale is None and "FEED_STALE" not in found.warnings

@@ -361,3 +361,12 @@ def test_a_key_straddling_the_error_message_limit_leaves_no_fragment():
         sc.get("status")
     kept = raised.value.error_msg or ""
     assert len(kept) <= MAX_ERROR_MSG and SECRET[:5] not in kept
+
+
+@pytest.mark.spec("req-tenable-transport-10")
+@pytest.mark.parametrize("body", ['{"version": "6.4.0", "extra": NaN}', '{"version": "6.4.0", "x": ' + "[" * 80 + "]" * 80 + "}"])
+def test_the_system_read_at_connect_is_bounded_before_pytenable_parses_it(body):
+    adapter = FakeAdapter(routes={("GET", "/rest/system"): [raw(200, body)]})
+    sc, _ = client(adapter)
+    with pytest.raises(ReadFailed, match="UnboundedResponse"):
+        sc.connect()

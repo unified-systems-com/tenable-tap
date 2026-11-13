@@ -235,6 +235,10 @@ class ResponseTooLarge(TransportError):
     """The response is over the size cap."""
 
 
+class UnboundedResponse(TransportError):
+    """The body is JSON this transport refuses: nested past the depth cap, or carrying NaN or Infinity."""
+
+
 class DeadlineExceeded(TransportError):
     """A read was still arriving past its deadline."""
 
@@ -431,6 +435,8 @@ class GuardedSession(requests.Session):
             response._content_consumed = True
         finally:
             response.close()
+        # Checked here, before pyTenable parses anything, so its own read at connect is bounded too.
+        _refuse_unbounded(response.content)
         for name in [k for k in response.headers if k.lower() in _DROPPED_HEADERS]:
             del response.headers[name]
         return response
@@ -471,6 +477,16 @@ def _depth(value: Any, limit: int) -> int:
         elif isinstance(item, list):
             stack.extend((child, depth + 1) for child in item)
     return deepest
+
+
+def _refuse_unbounded(body: bytes) -> None:
+    """Raise UnboundedResponse for JSON past the depth cap or carrying a constant; a body that is not JSON passes."""
+    try:
+        parse_json(body)
+    except json.JSONDecodeError:
+        return
+    except ValueError as exc:
+        raise UnboundedResponse(f"the response is not bounded JSON ({exc})") from None
 
 
 def parse_json(body: bytes) -> Any:
@@ -645,7 +661,7 @@ class SecurityCenterClient:
                 break
             except Refused:
                 raise
-            except (RedirectRefused, ResponseTooLarge) as exc:
+            except (RedirectRefused, ResponseTooLarge, UnboundedResponse) as exc:
                 raise ReadFailed(f"{self.qualified}: {op.name}: {exc}", attempts=attempt) from None
             except APIError as exc:
                 last_status = exc.code
