@@ -253,3 +253,46 @@ def test_the_ledger_names_every_assumption_and_each_gets_a_verdict(secrets, home
     assert verdicts["accepted-default"] == observe.NOT_REACHED
     for entry in ledger:
         assert entry["id"] in report
+
+
+@pytest.mark.spec("req-tenable-observe-3")
+def test_a_key_echoed_into_printed_or_shaped_text_is_replaced(secrets, home):
+    """A compromised or careless instance can echo a key into a version, a field value or a field name."""
+    # The hostUniqueness value is printed cut to 60 characters; the key straddles the cut.
+    straddling = "repositoryID," + "x" * 40 + ACCESS
+
+    def echoing(sent):
+        if sent.body["query"]["tool"] == "vulndetails":
+            return ok({"totalRecords": "1", "results": [finding(hostUniqueness=straddling)]})
+        return analysis(sent)
+
+    adapter = instance(
+        {
+            ("GET", "/rest/system"): [ok({"version": "6.4.0"}), ok({"version": f"6.4.0 {SECRET}"})],
+            ("GET", "/rest/feed"): [ok({"active": {"updateTime": "1"}, "passive": {"updateTime": "1"}, ADMIN_SECRET: {"updateTime": "1"}})],
+            ("POST", "/rest/analysis"): echoing,
+        }
+    )
+    report, run_dir = observe_run(secrets, home, adapter)
+    shapes = (run_dir / "shapes.json").read_text()
+    for text in (report, shapes):
+        for key in (ACCESS, SECRET, ADMIN_SECRET):
+            assert key not in text and key[:8] not in text, key
+
+
+@pytest.mark.spec("req-tenable-observe-4")
+def test_the_probes_own_reads_are_recorded_like_every_other_step(secrets, home):
+    _, run_dir = observe_run(secrets, home, instance(), "--record-bodies")
+    responses = json.loads((run_dir / "shapes.json").read_text())["responses"]
+    probe_steps = [r["step"] for r in responses.values() if r["step"].startswith("probe ")]
+    assert probe_steps == ["probe system", "probe status", "probe current_user", "probe current_organization", "probe feed", "probe repository_list"]
+    assert any(f.name.endswith("probe-repository-list.json") for f in run_dir.iterdir())
+
+
+@pytest.mark.spec("req-tenable-observe-4")
+def test_a_refused_probe_read_is_recorded_as_failed_not_absent(secrets, home):
+    refused = raw(403, json.dumps({"error_code": 403, "error_msg": "forbidden"}))
+    _, run_dir = observe_run(secrets, home, instance({("GET", "/rest/feed"): [refused]}))
+    responses = json.loads((run_dir / "shapes.json").read_text())["responses"]
+    feed = [r for r in responses.values() if r["step"] == "probe feed"]
+    assert feed and feed[0]["status"] == 403 and feed[0]["failed"]

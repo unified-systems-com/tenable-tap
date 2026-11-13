@@ -17,6 +17,8 @@ A step whose prerequisite is missing is recorded as *not read* with the reason, 
 from __future__ import annotations
 
 import argparse
+import contextvars
+import io
 import json
 import os
 import re
@@ -27,7 +29,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, TextIO, cast
 
 from requests.adapters import BaseAdapter
 
@@ -76,9 +78,18 @@ class Context:
     probe: probe_module.Probe | None = None
 
 
+#: The run's key redaction, applied by ``safe`` before it truncates, so a key cut at the limit
+#: cannot leave a fragment that the final redaction of the report would no longer match.
+_redact: contextvars.ContextVar[Callable[[str], tuple[str, int]] | None] = contextvars.ContextVar("tenable_observe_redact", default=None)
+
+
 def safe(text: Any, limit: int = 160) -> str:
-    """Printable characters only, bounded: nothing an instance returns can reach the terminal raw."""
-    cleaned = "".join(ch if ch.isprintable() else "?" for ch in str(text))
+    """Printable characters only, keys replaced, bounded: nothing an instance returns can reach the terminal raw."""
+    text = str(text)
+    redact = _redact.get()
+    if redact is not None:
+        text = redact(text)[0]
+    cleaned = "".join(ch if ch.isprintable() else "?" for ch in text)
     return cleaned if len(cleaned) <= limit else cleaned[: limit - 3] + "..."
 
 
@@ -194,9 +205,29 @@ def repo_filter(repository_id: str) -> dict[str, Any]:
     return analysis.flt("repositoryIDs", repository_id)
 
 
+class _RecordingClient:
+    """The probe's view of the client: each read it makes is saved like any other step's."""
+
+    def __init__(self, ctx: Context) -> None:
+        self._ctx = ctx
+
+    @property
+    def version(self) -> str | None:
+        return self._ctx.client.version
+
+    def get(self, name: str, path_id: str | None = None, params: dict[str, str] | None = None) -> Reply:
+        try:
+            reply = self._ctx.client.get(name, path_id=path_id, params=params)
+        except ReadFailed as exc:
+            _save(self._ctx, f"probe {name}", None, exc)
+            raise
+        _save(self._ctx, f"probe {name}", reply, None)
+        return reply
+
+
 def step_probe(ctx: Context) -> bool:
     try:
-        ctx.probe = probe_module.run(ctx.client, ctx.credential, now=time.time())
+        ctx.probe = probe_module.run(cast(SecurityCenterClient, _RecordingClient(ctx)), ctx.credential, now=time.time())
     except probe_module.ProbeError as exc:
         ctx.lines.append(Line("probe", "repository_list", "not read", note=safe(exc)))
         return False
@@ -466,6 +497,26 @@ def run(
     admin = SecurityCenterClient(credential, role=ADMIN, **kwargs) if credential.admin is not None else None
     out_dir = _out_dir(credential, out_root) if save else None
     ctx = Context(credential, client, admin, out_dir, record_bodies)
+    token = _redact.set(credential.redact)
+    try:
+        _observe(ctx)
+        account_for_every_operation(ctx)
+        ledger = finish_ledger(ctx)
+        # Both outputs carry text the instance chose (versions, field names, notes), so either key is
+        # replaced in them as written, not only in saved bodies (req-tenable-observe-3).
+        if out_dir is not None:
+            shapes, _ = credential.redact(json.dumps({"instance_key": credential.instance_key, "responses": ctx.shapes, "ledger": ledger}, indent=2))
+            write_private(out_dir / "shapes.json", shapes)
+        report = io.StringIO()
+        render(ctx, ledger, report)
+        stdout.write(credential.redact(report.getvalue())[0])
+    finally:
+        _redact.reset(token)
+    return ctx
+
+
+def _observe(ctx: Context) -> None:
+    """The steps, in order; the clients are closed whatever happens."""
     try:
         if step_probe(ctx):
             step_findings(ctx)
@@ -476,15 +527,9 @@ def run(
             step_scans(ctx)
             step_inventory(ctx)
     finally:
-        client.close()
-        if admin is not None:
-            admin.close()
-    account_for_every_operation(ctx)
-    ledger = finish_ledger(ctx)
-    if out_dir is not None:
-        write_private(out_dir / "shapes.json", json.dumps({"instance_key": credential.instance_key, "responses": ctx.shapes, "ledger": ledger}, indent=2))
-    render(ctx, ledger, stdout)
-    return ctx
+        ctx.client.close()
+        if ctx.admin is not None:
+            ctx.admin.close()
 
 
 def main(argv: list[str] | None = None, *, stdout: TextIO | None = None, out_root: Path | None = None, secrets: Path | None = None, transport: BaseAdapter | None = None, sleep: Callable[[float], None] | None = None) -> int:
