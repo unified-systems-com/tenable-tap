@@ -62,7 +62,12 @@ COVERS_REPOSITORY__tenable = "edges/COVERS_REPOSITORY__tenable.edge.json"
 COVERS_ASSET_LIST__tenable = "edges/COVERS_ASSET_LIST__tenable.edge.json"
 LAST_SEEN_IN_RUN__tenable = "edges/LAST_SEEN_IN_RUN__tenable.edge.json"
 
+[grift]
+# Declares tenable.area, tenable.instance and tenable.scan_result, the keys tenable stamps on its own types: dimensions
+# are declared, never minted, and writes refuse an undeclared name (tap PR 1196).
+dimension = "grift/dimension.grift.json"
+
 [[boot.records]]
 name = "ci"
 description = "RESERVED NAME (req-boot-bootstrap-ci-record): the stack this plugin's own tests run in - depends_on closure + self, offline, credential-free. The consumer flips self to editable."
-sha256 = "8cb12c4e95156dcf8f94daf3b44cb1371b2aeb7942f7af7d55fd3d7d420c6678"
+sha256 = "070a6cd2d529ad89f1bb8286c5f450d5f31b76dce184ae0a88045dff42f5c609"

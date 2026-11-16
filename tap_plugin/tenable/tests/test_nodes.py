@@ -13,6 +13,7 @@ from tap_grid.models import Entity
 from tap_grid.registry import get_model_class
 from tap_grid.services import create_node
 from tap_plugin.tenable.identity import FREE_TEXT_CEILING_BYTES, assertion_key, canonical_root, host_key
+from tap_plugin.tenable.tests.conftest import dimension_view, keyed_by_node
 
 INSTANCE = canonical_root("https://sc.example")
 IPV4_UNIQUENESS = "repositoryID,ip,dnsName"
@@ -34,6 +35,9 @@ def _result(plugin_id: str = "19506", port: str = "0", protocol: str = "TCP") ->
 
 
 #: One valid minimal payload per type, with its expected area and display name.
+# The fixed id tenable's dimension seed gives tenable.area (grift/dimension.grift.json).
+AREA_DIMENSION_ID = "01a1d54a-cfad-7bcc-926b-baf7d7a7c2ed"
+
 PAYLOADS = {
     "tenable__tenable_security_center": ({"instance_key": INSTANCE, "network_name": "corp"}, "run", INSTANCE),
     "tenable__tenable_scan_run": ({"instance_key": INSTANCE, "run_id": "r1"}, "run", "run r1"),
@@ -79,7 +83,10 @@ class TestEveryType:
         node = _create(type_slug, payload)
         node.entity.refresh_from_db()
         assert node.entity.name == name
-        assert node.entity.dimensions.get("tenable.area") == area
+        # Stored under the uuid tenable's dimension seed declares for tenable.area (tap PR 1196).
+        assert dimension_view(node.entity).get("tenable.area") == area
+        if keyed_by_node():
+            assert AREA_DIMENSION_ID in node.entity.dimensions
 
     def test_found_again_by_its_natural_key(self, type_slug):
         payload, _, _ = PAYLOADS[type_slug]

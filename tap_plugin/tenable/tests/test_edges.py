@@ -16,6 +16,7 @@ from tap_grid.constraints import InvalidEdgeError
 from tap_grid.models import Entity
 from tap_grid.services import create_edge, create_node
 
+from .conftest import dimension_view
 from .test_nodes import PAYLOADS
 
 EDGES = Path(__file__).resolve().parents[1] / "edges"
@@ -74,7 +75,7 @@ class TestInternalEdges:
         source, target = INTERNAL[slug]
         edge = create_edge(_node(source), _node(target), slug)
         edge.entity.refresh_from_db()
-        assert edge.entity.dimensions.get("tenable.area") == _definition(slug)["default_dimensions"]["tenable.area"]
+        assert dimension_view(edge.entity).get("tenable.area") == _definition(slug)["default_dimensions"]["tenable.area"]
 
     def test_reversed_endpoints_refused(self, slug):
         source, target = INTERNAL[slug]
