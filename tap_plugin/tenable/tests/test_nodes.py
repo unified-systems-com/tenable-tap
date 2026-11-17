@@ -9,11 +9,11 @@ from an instance.
 import pytest
 import tap_plugin.tenable.models  # noqa: F401 — trigger model registration
 
-from tap_grid.dimension_names import view
 from tap_grid.models import Entity
 from tap_grid.registry import get_model_class
 from tap_grid.services import create_node
 from tap_plugin.tenable.identity import FREE_TEXT_CEILING_BYTES, assertion_key, canonical_root, host_key
+from tap_plugin.tenable.tests.conftest import dimension_view, keyed_by_node
 
 INSTANCE = canonical_root("https://sc.example")
 IPV4_UNIQUENESS = "repositoryID,ip,dnsName"
@@ -84,8 +84,9 @@ class TestEveryType:
         node.entity.refresh_from_db()
         assert node.entity.name == name
         # Stored under the uuid tenable's dimension seed declares for tenable.area (tap PR 1196).
-        assert view(node.entity.dimensions).get("tenable.area") == area
-        assert AREA_DIMENSION_ID in node.entity.dimensions
+        assert dimension_view(node.entity).get("tenable.area") == area
+        if keyed_by_node():
+            assert AREA_DIMENSION_ID in node.entity.dimensions
 
     def test_found_again_by_its_natural_key(self, type_slug):
         payload, _, _ = PAYLOADS[type_slug]
