@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import json
+from http.client import HTTPMessage
+from types import SimpleNamespace
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -42,6 +44,7 @@ class Sent:
     params: dict[str, str]
     body: Any
     headers: dict[str, str]
+    timeout: Any = None
 
 
 @dataclass
@@ -59,7 +62,7 @@ class FakeAdapter(BaseAdapter):
     def send(self, request: requests.PreparedRequest, **kwargs: Any) -> requests.Response:  # type: ignore[override]
         parts = urlsplit(str(request.url))
         body = json.loads(request.body) if request.body else None
-        self.sent.append(Sent(str(request.method), parts.path, dict(parse_qsl(parts.query)), body, dict(request.headers)))
+        self.sent.append(Sent(str(request.method), parts.path, dict(parse_qsl(parts.query)), body, dict(request.headers), kwargs.get("timeout")))
         key = (str(request.method), parts.path)
         pending = self.raise_on.get(key)
         if pending:
@@ -76,6 +79,12 @@ class FakeAdapter(BaseAdapter):
         response.status_code = status
         response.headers.update(headers)
         response.raw = io.BytesIO(content)
+        # What requests' cookie extraction reads, so a Set-Cookie here reaches the session's jar as
+        # it would from a real server.
+        message = HTTPMessage()
+        for name, value in headers.items():
+            message[name] = value
+        response.raw._original_response = SimpleNamespace(msg=message)  # type: ignore[attr-defined]
         response.url = str(request.url)
         response.request = request
         return response

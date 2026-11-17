@@ -33,6 +33,7 @@ import json
 import re
 import time
 from collections.abc import Callable, Iterator
+from http.cookiejar import DefaultCookiePolicy
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import parse_qsl, unquote, urlsplit
@@ -368,6 +369,9 @@ class GuardedSession(requests.Session):
         self._max_bytes = max_bytes
         self._clock = clock
         self.deadline: float | None = None
+        # API keys are the only credential: refuse every cookie, so nothing a response sets (even on
+        # the unauthenticated version check) is replayed on a later request.
+        self.cookies.set_policy(DefaultCookiePolicy(allowed_domains=[]))
 
     def get_adapter(self, url: str) -> BaseAdapter:
         if not url.lower().startswith(("https://", "http://")):
@@ -415,6 +419,11 @@ class GuardedSession(requests.Session):
         if kwargs.get("proxies"):
             raise Refused("proxies cannot be supplied per request")
         kwargs.update(verify=self._pinned_verify, cert=None, proxies={}, allow_redirects=False, stream=True)
+        # A connect and read timeout always, never past the read's deadline: the deadline is checked
+        # only while the body arrives, so a stalled handshake or header phase is bounded here.
+        if kwargs.get("timeout") is None:
+            remaining = max(self.deadline - self._clock(), 0.001) if self.deadline is not None else READ_TIMEOUT
+            kwargs["timeout"] = (min(CONNECT_TIMEOUT, remaining), min(READ_TIMEOUT, remaining))
         try:
             response = super().send(request, **kwargs)
         except (requests.ConnectionError, requests.Timeout) as exc:

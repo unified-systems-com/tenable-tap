@@ -420,3 +420,27 @@ def test_an_error_echoing_either_envelopes_keys_is_redacted_whichever_client_sen
     kept = raised.value.error_msg or ""
     for key in (ACCESS, SECRET, ADMIN_ACCESS, ADMIN_SECRET):
         assert key not in kept
+
+
+@pytest.mark.spec("req-tenable-connection-2")
+def test_a_cookie_the_server_sets_is_never_sent_back():
+    """API keys are the only credential: a Set-Cookie, even on the unauthenticated version check, is refused."""
+    adapter = FakeAdapter(routes={("GET", "/rest/system"): [ok({"version": "6.4.0"}, headers={"Set-Cookie": "TNSSESSIONID=abc123; Path=/"})], ("GET", "/rest/status"): [ok({})]})
+    sc, _ = client(adapter)
+    sc.get("status")
+    later = [s for s in adapter.sent if s.path == "/rest/status"]
+    assert later and all("Cookie" not in s.headers for s in later)
+
+
+@pytest.mark.spec("req-tenable-transport-4")
+def test_every_send_carries_a_timeout_within_the_deadline():
+    now = [1000.0]
+    session = GuardedSession(ROOT, True, "main", clock=lambda: now[0])
+    adapter = FakeAdapter(routes={("GET", "/rest/status"): [ok({})]})
+    session.mount("https://", adapter)
+    session.get(ROOT + "/rest/status")
+    assert adapter.sent[-1].timeout == (10.0, 120.0)
+    session.deadline = now[0] + 5
+    session.get(ROOT + "/rest/status")
+    connect, read = adapter.sent[-1].timeout
+    assert connect <= 5 and read <= 5
