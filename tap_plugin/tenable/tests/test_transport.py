@@ -400,3 +400,23 @@ def test_the_construction_read_is_retried_like_any_other():
     with pytest.raises(ReadFailed, match="connecting failed") as raised:
         sc.connect()
     assert raised.value.attempts == 3 and adapter.paths() == ["GET /rest/system"] * 3
+
+
+@pytest.mark.spec("req-tenable-connection-2")
+@pytest.mark.parametrize("role", ["main", "admin"])
+def test_an_error_echoing_either_envelopes_keys_is_redacted_whichever_client_sent_it(role):
+    from tap.runtime_secrets import parse_secret_envelope
+
+    from tap_plugin.tenable.credential import admin_from_envelope
+    from tap_plugin.tenable.tests.fakes import ADMIN_ACCESS, ADMIN_SECRET, admin_payload
+
+    admin = admin_from_envelope(parse_secret_envelope(admin_payload(), Path("/nonexistent/a.secret.json")))
+    echo = f"main {ACCESS} {SECRET} admin {ADMIN_ACCESS} {ADMIN_SECRET}"
+    path = "/rest/status" if role == "main" else "/rest/scanner"
+    adapter = FakeAdapter(routes={("GET", path): [raw(403, json.dumps({"error_code": 12, "error_msg": echo}))]})
+    sc = SecurityCenterClient(credential().with_admin(admin), role=role, transport=adapter, sleep=no_sleep())
+    with pytest.raises(ReadFailed) as raised:
+        sc.get("status" if role == "main" else "scanner_list")
+    kept = raised.value.error_msg or ""
+    for key in (ACCESS, SECRET, ADMIN_ACCESS, ADMIN_SECRET):
+        assert key not in kept

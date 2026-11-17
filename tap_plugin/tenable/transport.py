@@ -579,6 +579,9 @@ class SecurityCenterClient:
         self._session.mount("https://", adapter)
         self._session.mount("http://", adapter)  # NOSONAR S5332: plain http is the operator's choice (req-tenable-connection-9); every run warns
         self._keys = keys
+        # Both envelopes' keys, so an error message echoing either pair is redacted whichever
+        # client sent the request (the instance knows both).
+        self._redact = credential.redact
         self._url = credential.instance_key
         self._verify = source.verify
         self._sc: Any = None
@@ -739,7 +742,7 @@ class SecurityCenterClient:
         message = data.get("error_msg")
         if isinstance(message, str):
             # Redact before truncating: a key straddling the limit would otherwise survive as a fragment.
-            message, _ = self._keys.redact(message)
+            message, _ = self._redact(message)
             message = message[:MAX_ERROR_MSG]
         else:
             message = None
