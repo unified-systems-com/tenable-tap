@@ -1,0 +1,20 @@
+{
+  "description": "Upstream versions the tenable plugin supports, and the evidence for each (req-tenable-upstream-versions). Nothing has been observed yet: this plugin was built blind from published documentation, and an entry moves to observed only when a recorded response from a real instance backs it.",
+  "hard_floor": "5.13",
+  "entries": [
+    {
+      "description": "Tenable Security Center from 5.13, the first version with API-key authentication, up to the newest release the documentation describes.",
+      "product": "tenable_security_center",
+      "supported": ">=5.13,<6.10",
+      "evidence": "documented",
+      "note": "API keys need 5.13 (pyTenable's own version check and Tenable's API-key documentation). The release notes describe changes through 6.9, the upper bound. Read 2026-11-06 and 2026-11-12; no instance called."
+    },
+    {
+      "description": "The pyTenable client at the exact version pinned in pyproject.toml.",
+      "product": "pytenable",
+      "supported": "==26.10.1",
+      "evidence": "documented",
+      "note": "The version the spec's survey read (PyPI metadata and source, 2026-11-06). The suite exercises it against fixtures only."
+    }
+  ]
+}

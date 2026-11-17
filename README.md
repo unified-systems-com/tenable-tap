@@ -5,11 +5,12 @@ returns it: every plugin result (vulnerability, informational and configuration 
 families behind them, the hosts and services Tenable observed, its consoles, scanners, zones, repositories,
 scans, asset lists and risk rules, and per plugin whatever package information its output carries.
 
-**Status: node and edge types built; no collector yet; nothing run against a real Security Center.** The
-15 Tenable-owned node types and 23 edge types exist, with their migration and tests. No collector, parser or
-transport is built, and nothing has been observed against an instance: every field and behaviour in the spec
-is documented or designed, not observed, and no requirement reaches `Implemented` before a recorded response
-replaces its assumptions.
+**Status: node and edge types, the guarded transport, the probe and the observation command are built; no
+collector run yet; nothing run against a real Security Center.** The 15 Tenable-owned node types and 23 edge
+types exist, with their migration and tests. The transport, credential envelopes, probe and observation
+command are tested against fixtures only. Nothing has been observed against an instance: every field and
+behaviour in the spec is documented or designed, not observed, and no requirement reaches `Implemented`
+before a recorded response replaces its assumptions.
 
 ## What it owns, and will own
 
@@ -35,6 +36,34 @@ replaces its assumptions.
 - Asset-list membership, Tenable's console-wide host store, per-scan `.nessus` enrichment and the Tenable VM
   (cloud) transport: Backlog requirements in the spec.
 - Pages and panels: none in v0.
+
+## Supported versions
+
+Generated from `tap_plugin/tenable/compat/upstream.json` (`req-tenable-upstream-versions-5`); a test fails
+when this table and the file differ. A run records one verdict against it: observed, documented-only, outside
+(a warning; the run continues) or unreadable. Below Security Center 5.13 there are no API keys, and the run
+ends with an error.
+
+<!-- upstream-versions:begin -->
+| Product | Supported | Evidence |
+| --- | --- | --- |
+| Tenable Security Center | `>=5.13,<6.10` | documented |
+| pyTenable | `==26.10.1` | documented |
+<!-- upstream-versions:end -->
+
+## Observing an instance
+
+Before the collector reads an instance, point the observation command at it. It reads through the same
+allowlist, writes nothing to the grid, and saves response shapes (field names, types and counts, no values)
+under `~/.tenable-recordings/`, owner-only and refused inside a git repository:
+
+    python -m tap_plugin.tenable.observe --list
+    python -m tap_plugin.tenable.observe --key <envelope key> --dry-run
+    python -m tap_plugin.tenable.observe --key <envelope key> [--record-bodies]
+
+`--record-bodies` also saves each body with the keys replaced. Plugin output can still hold credentials from
+the scanned hosts, so delete the bodies when done. The report marks each assumption in
+`observe_assumptions.json` settled, contradicted or not reached (`req-tenable-observe`).
 
 ## Read first
 
