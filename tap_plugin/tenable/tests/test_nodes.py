@@ -248,6 +248,14 @@ class TestFreeTextCeiling:
         payload, _, _ = PAYLOADS["tenable__tenable_observed_host"]
         assert not create_node("tenable__tenable_observed_host", {**payload, "host_summary": {"x": "y" * FREE_TEXT_CEILING_BYTES}}).success
 
+    @pytest.mark.parametrize("type_slug", sorted(PAYLOADS))
+    def test_the_only_columns_the_ceiling_skips_are_cores_spine_copies(self, type_slug):
+        # The ceiling skips editable=False columns; today those are exactly the two copies core's
+        # triggers keep. A plugin column marked editable=False would leave the ceiling silently,
+        # so it fails here first and has to be argued for.
+        skipped = {f.name for f in get_model_class(type_slug)._meta.concrete_fields if not f.editable}
+        assert skipped == {"spine_deleted_at", "spine_dimensions"}
+
     @pytest.mark.spec("req-tenable-findings-13")
     def test_the_same_ceiling_on_audit_columns_and_rule_comments(self):
         big = "x" * (FREE_TEXT_CEILING_BYTES + 1)
