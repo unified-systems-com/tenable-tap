@@ -4,6 +4,8 @@ from typing import Any, ClassVar
 
 from django.db import models
 
+from tap_grid.event_time import NO_EVENT_TIME
+
 from ._base import TenableNode
 from ._schemas import STATEMENT_STATE, STR, STR_OR_NULL, validated
 
@@ -31,6 +33,7 @@ class TenableRepository(TenableNode):
     ENTITY_ICON: ClassVar[str] = "tenable-repository"
     DEFAULT_DIMENSIONS: ClassVar[dict[str, str]] = {"tenable.area": "run"}
     NATURAL_KEY: ClassVar[tuple[str, ...]] = ("instance_key", "repository_id")
+    EVENT_TIME = NO_EVENT_TIME
 
     OUTBOUND_EDGES: ClassVar[list[dict[str, Any]]] = [
         {"nodes": [{"type": "tenable__tenable_security_center"}], "edges": [{"type": "HELD_BY_SECURITY_CENTER__tenable"}]},

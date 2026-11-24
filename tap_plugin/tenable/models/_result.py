@@ -11,8 +11,11 @@ from typing import Any, ClassVar
 from django.core.exceptions import ValidationError
 from django.db import models
 
-from ._base import TenableNode
+from tap_grid.event_time import Interval
+
+from ..event_time import TENABLE_EPOCH
 from ..identity import UnkeyableError, assertion_key, host_key
+from ._base import TenableNode
 from ._schemas import (
     ARRAY_OR_NULL,
     OBSERVATION_PATH,
@@ -80,6 +83,7 @@ class TenableResult(TenableNode):
     """One plugin result on one host, as Security Center returned it: the shared half."""
 
     FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = RESULT_VALIDATION_SCHEMA
+    EVENT_TIME = Interval(start="first_seen", kind="first_seen", reader=TENABLE_EPOCH)
 
     instance_key = models.CharField(max_length=1024, db_index=True, help_text="The Security Center this result came from.")
     assertion_key = models.CharField(
