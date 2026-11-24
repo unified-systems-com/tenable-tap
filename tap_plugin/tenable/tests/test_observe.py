@@ -340,6 +340,21 @@ def test_every_query_stays_inside_the_envelopes_repository_scope(tmp_path, home)
     assert "scope options not applied by this command: min_severity" in report
 
 
+@pytest.mark.spec("req-tenable-observe-1")
+def test_an_unapplied_scope_is_warned_before_any_request_and_refuses_recorded_bodies(tmp_path, home):
+    """Only repository_ids narrows the reads, so a body could hold what the scope excludes (AI review on PR 7)."""
+    root = tmp_path / "scoped"
+    root.mkdir()
+    write_envelope(root, envelope_payload("sc-one", scope={"plugin_ids": ["19506"], "asset_ids": ["1"]}))
+    stdout = io.StringIO()
+    code = observe.main(["--key", "sc-one", "--record-bodies"], stdout=stdout, out_root=home, secrets=root, transport=Refuses(), sleep=no_sleep())
+    assert code == 2
+    assert "scope options not applied by this command: asset_ids, plugin_ids" in stdout.getvalue()
+    assert not (home / observe.RECORDINGS_DIRNAME).exists() or not any((home / observe.RECORDINGS_DIRNAME).iterdir())
+    report, _ = observe_run(root, home, instance())
+    assert report.index("scope options not applied") < report.index("Tenable observation of")
+
+
 @pytest.mark.spec("req-tenable-observe-3")
 def test_instance_text_in_key_positions_is_never_printed_or_shaped(secrets, home):
     """A host, an address or an asset name placed where a field name goes is counted, never kept."""

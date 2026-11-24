@@ -247,6 +247,11 @@ def fetch(ctx: Context, step: str, operation: str, *, client: SecurityCenterClie
     return reply
 
 
+def unapplied_scope(credential: Credential) -> list[str]:
+    """The envelope's scope options this command does not apply: every one but ``repository_ids``."""
+    return sorted(k for k in credential.scope if k != "repository_ids")
+
+
 def scoped_repository_ids(ctx: Context) -> list[str] | None:
     """The envelope's ``repository_ids`` scope, or None when it names none."""
     ids = ctx.credential.scope.get("repository_ids")
@@ -533,7 +538,7 @@ def render(ctx: Context, ledger: list[dict[str, str]], stdout: TextIO) -> None:
         w(f"  version {version_text(ctx.probe.version)} verdict {ctx.probe.verdict}; warnings: {', '.join(ctx.probe.warnings) or 'none'}\n")
     scoped = scoped_repository_ids(ctx)
     w(f"  scope: {'repository_ids ' + ', '.join(safe(i, 12) for i in scoped) if scoped else 'every repository the credential sees'}\n")
-    others = sorted(k for k in ctx.credential.scope if k != "repository_ids")
+    others = unapplied_scope(ctx.credential)
     if others:
         w(f"  WARNING scope options not applied by this command: {', '.join(others)}\n")
     w("\nSteps\n")
@@ -651,6 +656,14 @@ def main(argv: list[str] | None = None, *, stdout: TextIO | None = None, out_roo
     if args.dry_run:
         plan(chosen[0], stdout)
         return 0
+    unapplied = unapplied_scope(chosen[0])
+    if unapplied:
+        # Said before any request: only repository_ids narrows what this command reads.
+        stdout.write(f"WARNING scope options not applied by this command: {', '.join(unapplied)}\n")
+        if args.record_bodies:
+            # A saved body could hold findings the envelope's scope excludes (AI review on PR 7).
+            stdout.write("refused: --record-bodies needs every scope option applied; observe without it, or narrow by repository_ids only\n")
+            return 2
     run(chosen[0], record_bodies=args.record_bodies, out_root=out_root, transport=transport, sleep=sleep, stdout=stdout)
     return 0
 

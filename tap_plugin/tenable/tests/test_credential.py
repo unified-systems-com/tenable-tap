@@ -194,6 +194,13 @@ class TestAdminPairing:
         write_envelope(tmp_path, admin_payload(for_key="missing"))
         assert [e.qualified for e in cred.discover(tmp_path)[1]] == ["tenable:sc-one-admin"]
 
+    def test_an_unmatched_for_key_is_never_echoed(self, tmp_path):
+        # A mis-authored envelope with its own access key pasted into for_key (AI review on PR 7).
+        write_envelope(tmp_path, envelope_payload("sc-one"))
+        write_envelope(tmp_path, admin_payload(for_key=ADMIN_ACCESS))
+        errors = cred.discover(tmp_path)[1]
+        assert len(errors) == 1 and ADMIN_ACCESS not in str(errors[0]) and ADMIN_ACCESS not in repr(errors[0])
+
     def test_two_admin_envelopes_for_one_instance_are_both_refused(self, tmp_path):
         write_envelope(tmp_path, envelope_payload("sc-one"))
         write_envelope(tmp_path, admin_payload("adm-a"))

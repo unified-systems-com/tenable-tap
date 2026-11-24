@@ -257,7 +257,9 @@ def _pair(main: list[Credential], admins: list[AdminCredential], errors: list[Cr
     for admin in admins:
         target = by_key.get(admin.for_key)
         if target is None:
-            errors.append(CredentialError(admin.qualified, f"for_key names {SCOPE}:{admin.for_key}, which is not a usable {KIND} envelope"))
+            # The unmatched value is never echoed: a mis-authored envelope can carry a key there,
+            # and discovery errors print before any credential redactor exists.
+            errors.append(CredentialError(admin.qualified, f"its for_key names no usable {KIND} envelope (the value is not shown)"))
         elif admin.instance_key != target.instance_key:
             errors.append(CredentialError(admin.qualified, f"resolves to a different instance from {target.qualified}"))
         else:
