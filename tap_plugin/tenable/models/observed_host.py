@@ -5,8 +5,10 @@ from typing import Any, ClassVar
 from django.core.exceptions import ValidationError
 from django.db import models
 
-from ._base import TenableNode
+from tap_grid.event_time import NO_EVENT_TIME
+
 from ..identity import UnkeyableError, host_key
+from ._base import TenableNode
 from ._schemas import OBJECT_OR_NULL, SHA256_HEX, STR, STR_OR_NULL, validated
 
 _REPORTED = ("host_uuid", "agent_uuid", "ip", "ips", "dns_name", "netbios_name", "mac_address", "operating_system")
@@ -33,6 +35,7 @@ class TenableObservedHost(TenableNode):
     ENTITY_ICON: ClassVar[str] = "tenable-observed-host"
     DEFAULT_DIMENSIONS: ClassVar[dict[str, str]] = {"tenable.area": "observation"}
     NATURAL_KEY: ClassVar[tuple[str, ...]] = ("instance_key", "host_key")
+    EVENT_TIME = NO_EVENT_TIME
 
     OUTBOUND_EDGES: ClassVar[list[dict[str, Any]]] = [
         {"nodes": [{"type": "tenable__tenable_repository"}], "edges": [{"type": "RECORDED_IN_REPOSITORY__tenable"}]},

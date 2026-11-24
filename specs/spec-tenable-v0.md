@@ -89,6 +89,7 @@ Nine consequences shape v0:
 | req-tenable-package-link | [Package Link](#package-link) | Proposed | An edge to a `computing_core` package only when a parser's result is unambiguous |
 | req-tenable-observe | [The Observation Command](#the-observation-command) | In Development | A read-only command that records what an instance returns so shapes are observed before they are parsed |
 | req-tenable-fips | [FIPS Posture](#fips-posture) | Proposed | Declared from what the validator reports; no `cryptography` extra |
+| req-tenable-event-time | [Event Time](#event-time) | In Development | Each type's own time on core's event-time spine, read from Security Center's epoch text through one plugin reader; the stored values stay as returned |
 | req-tenable-finding-cve-narrowing | Finding-Level CVE Narrowing | Backlog | Only if a recording shows Security Center reports a host-specific subset of a plugin's CVEs, or a plugin's CVE list differs by host or by configuration, write `ABOUT_VULNERABILITY__tenable` from the finding for just those CVEs; not built unless a need is found |
 | req-tenable-software-enumeration | Host Software Enumeration | Backlog | The `listsoftware` tool parsed into `computing_core` host-package data, as another per-plugin-style parser |
 | req-tenable-cloud | Tenable VM Transport | Backlog | The cloud findings export (a POST job, a status poll, chunk downloads) as a second transport behind the same vocabulary |
@@ -266,7 +267,7 @@ The schemas tolerate the documented changes across the supported range (Tenable'
 
 Four request shapes disagree between Tenable's documentation and pyTenable, and the collector trusts neither until the observation command has settled each on the instance: where analysis paging offsets go (request root in the documentation, inside `query` in pyTenable); whether `wasVuln` is a root parameter (documentation, which says the default includes web-application results) or a filter (pyTenable, valid from 6.2); the `lastSeen` value format (`<minDaysBack>:<maxDaysBack>` in the documentation, epoch ranges in Elastic's integration); and the paging flag for `/hosts` (not read in v0). The documented form is built first and the observed one replaces it.
 
-Values are stored on Tenable-owned nodes as returned. The one conversion this plugin makes is when it writes or links a shared `computing_core` fact (`req-tenable-shared-facts`): the port becomes the integer `port_number` and the protocol the lower-case `transport` that `computing_core` keys by, and an address is written in canonical form; the value as returned stays on Tenable's own node beside it.
+Values are stored on Tenable-owned nodes as returned. Times stay as returned too: core's event-time spine reads them through this plugin's reader, which converts nothing in the stored field (`req-tenable-event-time`). The one conversion this plugin makes is when it writes or links a shared `computing_core` fact (`req-tenable-shared-facts`): the port becomes the integer `port_number` and the protocol the lower-case `transport` that `computing_core` keys by, and an address is written in canonical form; the value as returned stays on Tenable's own node beside it.
 
 #### Acceptance Criteria
 
@@ -836,6 +837,40 @@ The runtime dependencies are `pytenable` and its base requirements, which at the
 | --- | --- | --- | --- | --- |
 | req-tenable-fips-1 | Declared From The Validator | Proposed | The `[fips]` table matches what `crypto-providers` reports at strict level, with a `reason` when `uses-nonvalidated`. | |
 | req-tenable-fips-2 | No Bundled-OpenSSL Extra | Proposed | No dependency or extra that bundles its own OpenSSL is declared. | Ties to `req-tenable-transport-5`. |
+
+### Event Time
+----
+RID: `req-tenable-event-time`
+
+Status: `In Development`
+
+Core's event time (`req-grid-entity-event-time` in `tap_grid/specs/spec-grid-entity.md`, tap 0.4.7 and later) puts when a thing happened or held in the world on the entity row, so one window search covers every type. Every model states which of its fields says so, or that it has none.
+
+Security Center sends every time as a count of seconds since 1970, as a string, and this plugin stores it exactly as sent (`req-tenable-response-contract`). Core's rule 22 keeps that form in the model; a declaration names a reader function that core calls with the stored value whenever it derives the spine (rules 23 to 28, ruled 2026-11-22 on Issue# 1284 - tap). No collector converts a time, and no field changes.
+
+#### Implementation
+
+`tap_plugin/tenable/event_time.py`: `from_tenable_epoch`, named by every declaration by its import path (`TENABLE_EPOCH`). It returns nothing for `-1` and `0`, which Security Center sends for a time it does not have (`expires` on a rule that never expires, `finishTime` on a scan still running), and hands every other value to core's `from_epoch_seconds`, which reads `-1` and `0` as real instants on purpose. It is pure. A value core's reader refuses is an unreadable value: no event time for the row, a warning, and the write goes on.
+
+| Type | Declaration | Why |
+| --- | --- | --- |
+| `tenable_finding`, `tenable_compliance_result` | `Interval(start="first_seen", kind="first_seen")`, no end | Core declares a finding at its creation (rule 13); `firstSeen` is Tenable's nearest. `lastSeen` is the latest sighting, not an end (rule 7). `lastMitigated` would be a stated end, but a reader sees one value, and whether Security Center keeps it on a finding that returns is unobserved (`req-tenable-mitigation`); until a recording shows it, the interval stays open. |
+| `tenable_plugin` | `Moment("plugin_pub_date", "published")` | The plugin's own publication. `pluginModDate` is the last edit, which rule 13 excludes. |
+| `tenable_scan_result` | `Interval(start="start_time", end="finish_time", kind="occurred")` | The scan's run; a running scan's unset finish leaves it open. |
+| `tenable_accept_risk_rule`, `tenable_recast_risk_rule` | `Interval(start="created_time", end="expires", kind="created")` | `expires` is the end Security Center states; `-1` (never) leaves it open. |
+| `tenable_asset_list`, `tenable_scan_zone` | `Interval(start="created_time", kind="created")` | Long-lived objects from their creation (rule 8); no end is stated. |
+| `tenable_security_center`, `tenable_scanner`, `tenable_plugin_family`, `tenable_observed_host`, `tenable_observed_program`, `tenable_repository`, `tenable_scan_run` | `NO_EVENT_TIME` | No world time is stored: a repository holds only sync times, and the scan run's times are collection time, which is never declared (rule 13). |
+
+No edge type declares one: none carries properties. Changing what `from_tenable_epoch` returns changes what stored spine values mean with no change of definition, so it raises each declaring type's version by hand and runs core's re-derive pass (rule 28); `tenable.model_versions.json` records each type's definition.
+
+#### Acceptance Criteria
+
+| ACID | Title | Status | Description | Notes |
+| --- | --- | --- | --- | --- |
+| req-tenable-event-time-1 | Every Type Declares | In Development | Each of the fifteen node types declares the event time in the table above or `NO_EVENT_TIME`; plugin validation passes with `TAP_REQUIRE_EVENT_TIME_DECLARATION=1`. | `TestTheDeclarations`. |
+| req-tenable-event-time-2 | Unset Is No Time | In Development | The reader reads an epoch string as that instant in UTC, returns nothing for `-1` and `0` as text or number, and raises on a value that is not a count. | `TestTheReader`; seeded: with no markers, seven tests fail. |
+| req-tenable-event-time-3 | The Field Stays As Sent | In Development | For each timed type, a stored epoch string sets `event_start` to that instant at precision `second` and the `tap.time` kind, and the field still holds the string; an unset start leaves no event time. | `TestOnTheSpine`. |
+| req-tenable-event-time-4 | Only A Stated End | In Development | A finding with a later `last_seen` stays open; a risk rule ends at `expires` and stays open at `-1`; a scan result with an unset finish stays open. | `TestOnTheSpine`. |
 
 ### v0 Non-Goals
 ----

@@ -34,6 +34,10 @@ class TenableNode(BaseModel):
             if canonical != self.instance_key:
                 errors["instance_key"] = ["instance_key must be the canonical root (identity.canonical_root)"]
         for field in self._meta.concrete_fields:
+            # Core's spine copies (spine_deleted_at, spine_dimensions) are editable=False and kept by
+            # the database, not written by this plugin; the free-text ceiling covers what a collector writes.
+            if not field.editable:
+                continue
             value = getattr(self, field.attname, None)
             if value is None:
                 continue

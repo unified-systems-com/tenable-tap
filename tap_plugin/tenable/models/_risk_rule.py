@@ -9,6 +9,9 @@ from typing import Any, ClassVar
 
 from django.db import models
 
+from tap_grid.event_time import Interval
+
+from ..event_time import TENABLE_EPOCH
 from ._base import TenableNode
 from ._schemas import STATEMENT_STATE, STR, STR_OR_NULL, validated
 
@@ -38,6 +41,7 @@ class TenableRiskRule(TenableNode):
     """An operator's risk rule in Security Center, as returned: the shared half."""
 
     FIELD_VALIDATION_SCHEMA: ClassVar[dict[str, Any]] = RULE_VALIDATION_SCHEMA
+    EVENT_TIME = Interval(start="created_time", kind="created", end="expires", reader=TENABLE_EPOCH, end_reader=TENABLE_EPOCH)
 
     instance_key = models.CharField(max_length=1024, db_index=True, help_text="The Security Center that holds this rule.")
     rule_id = models.CharField(max_length=32, help_text="The rule's id as returned.")

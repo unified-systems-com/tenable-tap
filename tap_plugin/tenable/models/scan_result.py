@@ -4,6 +4,9 @@ from typing import Any, ClassVar
 
 from django.db import models
 
+from tap_grid.event_time import Interval
+
+from ..event_time import TENABLE_EPOCH
 from ._base import TenableNode
 from ._schemas import STR, STR_OR_NULL, validated
 
@@ -59,6 +62,7 @@ class TenableScanResult(TenableNode):
     ENTITY_ICON: ClassVar[str] = "tenable-scan-result"
     DEFAULT_DIMENSIONS: ClassVar[dict[str, str]] = {"tenable.area": "run"}
     NATURAL_KEY: ClassVar[tuple[str, ...]] = ("instance_key", "scan_result_id")
+    EVENT_TIME = Interval(start="start_time", kind="occurred", end="finish_time", reader=TENABLE_EPOCH, end_reader=TENABLE_EPOCH)
 
     OUTBOUND_EDGES: ClassVar[list[dict[str, Any]]] = [
         {"nodes": [{"type": "tenable__tenable_security_center"}], "edges": [{"type": "RESULT_OF_SECURITY_CENTER__tenable"}]},

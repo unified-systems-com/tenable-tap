@@ -4,6 +4,8 @@ from typing import Any, ClassVar
 
 from django.db import models
 
+from tap_grid.event_time import NO_EVENT_TIME
+
 from ._base import TenableNode
 from ._schemas import STR, STR_OR_NULL, validated
 
@@ -29,6 +31,7 @@ class TenableSecurityCenter(TenableNode):
     ENTITY_ICON: ClassVar[str] = "tenable-security-center"
     DEFAULT_DIMENSIONS: ClassVar[dict[str, str]] = {"tenable.area": "run"}
     NATURAL_KEY: ClassVar[tuple[str, ...]] = ("instance_key",)
+    EVENT_TIME = NO_EVENT_TIME
 
     # The console is only ever the far end.
     OUTBOUND_EDGES: ClassVar[list[dict[str, Any]]] = []

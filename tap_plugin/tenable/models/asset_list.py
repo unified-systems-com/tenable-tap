@@ -4,6 +4,9 @@ from typing import Any, ClassVar
 
 from django.db import models
 
+from tap_grid.event_time import Interval
+
+from ..event_time import TENABLE_EPOCH
 from ._base import TenableNode
 from ._schemas import STATEMENT_STATE, STR, STR_OR_NULL, validated
 
@@ -27,6 +30,7 @@ class TenableAssetList(TenableNode):
     ENTITY_ICON: ClassVar[str] = "tenable-asset-list"
     DEFAULT_DIMENSIONS: ClassVar[dict[str, str]] = {"tenable.area": "risk"}
     NATURAL_KEY: ClassVar[tuple[str, ...]] = ("instance_key", "asset_id")
+    EVENT_TIME = Interval(start="created_time", kind="created", reader=TENABLE_EPOCH)
 
     OUTBOUND_EDGES: ClassVar[list[dict[str, Any]]] = [
         {"nodes": [{"type": "tenable__tenable_scan_run"}], "edges": [{"type": "LAST_SEEN_IN_RUN__tenable"}]},
