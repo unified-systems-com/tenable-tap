@@ -29,8 +29,8 @@
         "source": {
           "type": "git",
           "url": "https://github.com/unified-systems-com/tenable-tap",
-          "rev": "main",
-          "commit": "761545aab27d8dc0f25353718ffc66fc83e89ca6"
+          "rev": "v0.1.1",
+          "commit": "5e294c589dd35985bc16e0f4e0e5923c5b9c6c0b"
         }
       }
     ]

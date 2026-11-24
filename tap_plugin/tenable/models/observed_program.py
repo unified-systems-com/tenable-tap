@@ -4,6 +4,8 @@ from typing import Any, ClassVar
 
 from django.db import models
 
+from tap_grid.event_time import NO_EVENT_TIME
+
 from ._base import TenableNode
 from ._schemas import SHA256_HEX, STR, STR_OR_NULL, validated
 
@@ -28,6 +30,7 @@ class TenableObservedProgram(TenableNode):
     ENTITY_ICON: ClassVar[str] = "tenable-observed-program"
     DEFAULT_DIMENSIONS: ClassVar[dict[str, str]] = {"tenable.area": "observation"}
     NATURAL_KEY: ClassVar[tuple[str, ...]] = ("instance_key", "host_key", "transport", "port_number")
+    EVENT_TIME = NO_EVENT_TIME
 
     OUTBOUND_EDGES: ClassVar[list[dict[str, Any]]] = [
         {"nodes": [{"type": "computing_core__port"}], "edges": [{"type": "OBSERVED_ON_PORT__tenable"}]},

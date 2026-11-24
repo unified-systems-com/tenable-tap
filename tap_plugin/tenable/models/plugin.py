@@ -4,6 +4,9 @@ from typing import Any, ClassVar
 
 from django.db import models
 
+from tap_grid.event_time import Moment
+
+from ..event_time import TENABLE_EPOCH
 from ._base import TenableNode
 from ._schemas import STR, STR_OR_NULL, validated
 
@@ -65,6 +68,7 @@ class TenablePlugin(TenableNode):
     ENTITY_ICON: ClassVar[str] = "tenable-plugin"
     DEFAULT_DIMENSIONS: ClassVar[dict[str, str]] = {"tenable.area": "plugin"}
     NATURAL_KEY: ClassVar[tuple[str, ...]] = ("instance_key", "plugin_id")
+    EVENT_TIME = Moment("plugin_pub_date", "published", reader=TENABLE_EPOCH)
 
     OUTBOUND_EDGES: ClassVar[list[dict[str, Any]]] = [
         {"nodes": [{"type": "tenable__tenable_plugin_family"}], "edges": [{"type": "IN_PLUGIN_FAMILY__tenable"}]},
