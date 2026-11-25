@@ -1,6 +1,6 @@
 manifest_version = "0"
 plugin_version = "0.1.2" # x-release-please-version
-requires_tap = ">=0.4.9"
+requires_tap = ">=0.5.0"
 slug = "tenable"
 name = "TAP Tenable"
 description = "Tenable Security Center's results, plugins, observed hosts and services, consoles, scanners, zones, repositories, scans, asset lists and risk rules, read from its REST API and held on the grid as Tenable returns them."
