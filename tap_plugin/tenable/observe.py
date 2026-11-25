@@ -183,7 +183,12 @@ def _inside_repository(path: Path) -> bool:
 
 def _out_dir(credential: Credential, root: Path | None) -> Path:
     """An owner-only directory for this run, refused inside any git repository (req-tenable-observe-2, -7)."""
-    base = (root or Path.home()) / RECORDINGS_DIRNAME
+    home = root or Path.home()
+    # The root the operator names is not followed through a link either (AI review on PR 7); a link
+    # further up is followed, and the resolved path is what is checked against every repository.
+    if root is not None and root.is_symlink():
+        raise SystemExit(f"refusing to record through a symbolic link: {root}")
+    base = home / RECORDINGS_DIRNAME
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     slug = re.sub(r"[^a-z0-9]+", "-", credential.key.lower()).strip("-")[:40] or "instance"
     # A symlinked base would be checked where it points from, not where it writes: refuse it, and
@@ -266,8 +271,16 @@ def query(ctx: Context, step: str, body: dict[str, Any]) -> tuple[Reply | None, 
     """
     ids = scoped_repository_ids(ctx)
     filters = body["query"]["filters"]
-    if ids is not None and not any(f.get("filterName") == "repositoryIDs" for f in filters):
-        filters.insert(0, repo_filter(",".join(ids)))
+    if ids is not None:
+        named = [f for f in filters if f.get("filterName") == "repositoryIDs"]
+        outside = sorted({v for f in named for v in str(f.get("value", "")).split(",") if v and v not in ids})
+        if outside:
+            # A caller's own repository filter is checked, not trusted (AI review on PR 7).
+            exc = ReadFailed(f"{step}: names a repository outside the envelope's repository_ids scope")
+            ctx.lines.append(Line(step, "analysis", "not read", note="outside the envelope's repository_ids scope"))
+            return None, exc
+        if not named:
+            filters.insert(0, repo_filter(",".join(ids)))
     try:
         reply = ctx.client.analysis(body)
     except ReadFailed as exc:

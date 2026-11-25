@@ -546,6 +546,20 @@ def _guarded_sc_class() -> type:
     return _GuardedSC
 
 
+def _safe_code(code: Any) -> int | str:
+    """Security Center's ``error_code`` as a number, or a fixed word when it is anything else.
+
+    The code is documented as numeric and goes into exception text, which is not redacted the way
+    ``error_msg`` is. A server that echoes something else there (a key included) never reaches a
+    message: only a whole number, or digits up to ten characters, is kept (AI review on PR 7).
+    """
+    if isinstance(code, int) and not isinstance(code, bool):
+        return code
+    if isinstance(code, str) and code.isdigit() and len(code) <= 10:
+        return code
+    return "non-numeric"
+
+
 class SecurityCenterClient:
     """Reads of one Security Center instance, through pyTenable and the guarded session.
 
@@ -755,7 +769,7 @@ class SecurityCenterClient:
             message = message[:MAX_ERROR_MSG]
         else:
             message = None
-        return data["error_code"], message
+        return _safe_code(data["error_code"]), message
 
     @staticmethod
     def _delay(retry_after: str | None, attempt: int) -> float:

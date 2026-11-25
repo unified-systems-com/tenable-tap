@@ -809,7 +809,7 @@ An instrument for the first sessions against a real instance, and for any later 
 | ACID | Title | Status | Description | Notes |
 | --- | --- | --- | --- | --- |
 | req-tenable-observe-1 | Only The Allowlist | In Development | Every request passes the transport's allowlist; a path outside it is refused before any request. | |
-| req-tenable-observe-2 | Local And Private | In Development | Recordings are written outside any repository, judged on the resolved path and never through a symbolic link, with owner-only permissions, and nothing is written to the grid. | The repository is public. |
+| req-tenable-observe-2 | Local And Private | In Development | Recordings are written outside any repository, judged on the resolved path; the recordings directory and a root the operator names are never symbolic links (a link above them is followed, and the resolved path is what is judged), with owner-only permissions, and nothing is written to the grid. | The repository is public. |
 | req-tenable-observe-3 | Nothing Sensitive Printed; Shapes By Default | In Development | The report and recordings contain no key in any form, and the report contains no body, hostname, IP or asset name; text from an instance is stripped of non-printable characters and bounded before printing. Without `--record-bodies`, nothing saved holds a `pluginText` value or a host or asset name. | |
 | req-tenable-observe-4 | Not Read Is Recorded | In Development | A step that cannot run is recorded as not read with the reason, never as empty. | |
 | req-tenable-observe-5 | Dry Run Sends Nothing | In Development | `--dry-run` and `--list` send no request. | |

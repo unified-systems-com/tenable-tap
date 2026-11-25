@@ -355,6 +355,18 @@ def test_keys_never_reach_an_error_a_log_or_a_repr(caplog):
 
 
 @pytest.mark.spec("req-tenable-connection-2")
+@pytest.mark.parametrize("status", [200, 500])
+def test_a_key_echoed_in_error_code_never_reaches_an_error(status):
+    # error_code goes into the exception text, which is not redacted; only a number is kept (AI review on PR 7).
+    adapter = FakeAdapter(routes={("GET", "/rest/status"): [raw(status, json.dumps({"error_code": ACCESS, "error_msg": "x"}))] * 3})
+    sc, _ = client(adapter)
+    with pytest.raises(ReadFailed) as raised:
+        sc.get("status")
+    assert ACCESS not in str(raised.value) and ACCESS not in repr(raised.value)
+    assert raised.value.error_code == "non-numeric"
+
+
+@pytest.mark.spec("req-tenable-connection-2")
 def test_a_key_straddling_the_error_message_limit_leaves_no_fragment():
     from tap_plugin.tenable.transport import MAX_ERROR_MSG
 

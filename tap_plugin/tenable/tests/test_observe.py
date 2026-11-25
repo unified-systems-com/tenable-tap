@@ -317,7 +317,7 @@ def test_a_symlink_cannot_lead_recordings_into_a_repository(secrets, tmp_path):
     (linked_base / observe.RECORDINGS_DIRNAME).symlink_to(repo / "inside")
     linked_root = tmp_path / "home-b"
     linked_root.symlink_to(repo / "inside")
-    for home, reason in ((linked_base, "symbolic link"), (linked_root, "git repository")):
+    for home, reason in ((linked_base, "symbolic link"), (linked_root, "symbolic link")):
         with pytest.raises(SystemExit, match=reason):
             observe.main(["--key", "sc-one"], stdout=io.StringIO(), out_root=home, secrets=secrets, transport=instance(), sleep=no_sleep())
     assert list((repo / "inside").iterdir()) == []
@@ -338,6 +338,41 @@ def test_every_query_stays_inside_the_envelopes_repository_scope(tmp_path, home)
         assert repos == ["1"], filters
     assert re.search(r"findings repo 2\s+analysis\s+not read", report)
     assert "scope options not applied by this command: min_severity" in report
+
+
+class _NoAnalysis:
+    """A client stand-in that fails the test if a query is sent."""
+
+    def analysis(self, body):
+        raise AssertionError("a query was sent")
+
+
+@pytest.mark.spec("req-tenable-observe-1")
+def test_a_query_that_names_a_repository_outside_the_scope_is_not_sent(tmp_path):
+    root = tmp_path / "scoped"
+    root.mkdir()
+    write_envelope(root, envelope_payload("sc-one", scope={"repository_ids": ["1"]}))
+    credential = observe.discover(root)[0][0]
+    ctx = observe.Context(credential, _NoAnalysis(), None, None, False)
+    body = {"query": {"filters": [observe.repo_filter("1,2")]}}
+    reply, failure = observe.query(ctx, "probe outside", body)
+    assert reply is None and failure is not None
+    assert "outside the envelope" in ctx.lines[-1].note
+
+
+@pytest.mark.spec("req-tenable-observe-2")
+def test_a_symlinked_recordings_root_is_refused(tmp_path):
+    root = tmp_path / "secrets-for-link"
+    root.mkdir()
+    write_envelope(root, envelope_payload("sc-one"))
+    credential = observe.discover(root)[0][0]
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    link = tmp_path / "root-link"
+    link.symlink_to(target)
+    with pytest.raises(SystemExit, match="symbolic link"):
+        observe._out_dir(credential, link)
+    assert list(target.iterdir()) == []
 
 
 @pytest.mark.spec("req-tenable-observe-1")
