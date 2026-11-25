@@ -1,5 +1,5 @@
 manifest_version = "0"
-plugin_version = "0.1.2" # x-release-please-version
+plugin_version = "0.1.3" # x-release-please-version
 requires_tap = ">=0.5.0"
 slug = "tenable"
 name = "TAP Tenable"
@@ -70,4 +70,4 @@ dimension = "grift/dimension.grift.json"
 [[boot.records]]
 name = "ci"
 description = "RESERVED NAME (req-boot-bootstrap-ci-record): the stack this plugin's own tests run in - depends_on closure + self, offline, credential-free. The consumer flips self to editable."
-sha256 = "3dd70bff499a77cddae905b4871759a943fdd066a90c8c820978b4e83af3f9c7"
+sha256 = "84918d7704d8b785e7a382511367b2e78846594c361d1e1313be79189b56e7d4"

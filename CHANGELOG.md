@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.3](https://github.com/unified-systems-com/tenable-tap/compare/v0.1.2...v0.1.3) (2026-11-25)
+
+
+### Features
+
+* tap v0.5.0 — history rows carry the event time ([767cdbc](https://github.com/unified-systems-com/tenable-tap/commit/767cdbcdb4c8fdf37cf426942fd1c8dd8b572efb))
+* tap v0.5.0 — history rows carry the event time ([38546c4](https://github.com/unified-systems-com/tenable-tap/commit/38546c4ac4fd13a7470c64704ea7de997e2844ba))
+
 ## [0.1.2](https://github.com/unified-systems-com/tenable-tap/compare/v0.1.1...v0.1.2) (2026-11-25)
 
 
