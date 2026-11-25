@@ -1,0 +1,28 @@
+{
+  "description": "The open assumptions the tenable spec rests on, each with the acceptance criterion that depends on it (req-tenable-observe-10). The observation command marks each one settled, contradicted or not reached for the instance it read. A settled entry still needs the operator's review before any requirement that depends on it moves to Implemented.",
+  "assumptions": [
+    {"id": "paging-offsets", "acid": "req-tenable-response-contract-7", "claim": "An analysis page asked for [0, N) returns at most N records, with offsets sent both at the request root (documentation) and inside query (pyTenable)."},
+    {"id": "wasvuln-filter", "acid": "req-tenable-transport-7", "claim": "On Security Center 6.2 and later, wasVuln=excludeWas is accepted as a filter."},
+    {"id": "lastseen-format", "acid": "req-tenable-response-contract-7", "claim": "The lastSeen filter takes the documented <minDaysBack>:<maxDaysBack> form."},
+    {"id": "valid-filter-names", "acid": "req-tenable-scope", "claim": "A query with an unknown filter is refused with a message listing the valid filter names, which include repositoryIDs, pluginID, port, protocol, severity, familyID, exploitAvailable, cveID, asset, recastRiskStatus and lastSeen."},
+    {"id": "host-uniqueness", "acid": "req-tenable-findings-11", "claim": "Every vulndetails record carries hostUniqueness (or uniqueness before 5.14), naming only fields from the known set."},
+    {"id": "host-uniqueness-per-format", "acid": "req-tenable-findings-12", "claim": "Each repository's records carry one hostUniqueness list, stable within the repository."},
+    {"id": "agent-uuid-field", "acid": "req-tenable-findings-11", "claim": "Agent repositories name uuid (the agent UUID) in hostUniqueness, and not agentUUID."},
+    {"id": "last-mitigated", "acid": "req-tenable-findings", "claim": "Records carry lastMitigated (documented only as a filter name)."},
+    {"id": "vuln-uuid", "acid": "req-tenable-findings", "claim": "Records carry vulnUUID and vulnUniqueness (guaranteed from 6.7)."},
+    {"id": "cve-on-finding", "acid": "req-tenable-plugin-5", "claim": "Records carry the plugin's cve string."},
+    {"id": "plugin-output-wrapper", "acid": "req-tenable-parsers", "claim": "pluginText is wrapped in <plugin_output> tags."},
+    {"id": "check-type", "acid": "req-tenable-findings", "claim": "The plugin read returns checkType values that tell remote checks from local ones."},
+    {"id": "compliance-elements", "acid": "req-tenable-compliance-results-2", "claim": "Compliance results carry cm: elements in pluginText."},
+    {"id": "accepted-default", "acid": "req-tenable-transport-9", "claim": "A query with no acceptRiskStatus filter excludes accepted results through the API, as it does in the query UI."},
+    {"id": "repository-lifetimes", "acid": "req-tenable-repository-3", "claim": "The repository list returns the four vulnerability lifetimes under the pinned fields."},
+    {"id": "feed-shape", "acid": "req-tenable-probe-5", "claim": "The feed read returns active and passive entries with an updateTime."},
+    {"id": "host-summary-fields", "acid": "req-tenable-observed-host-4", "claim": "The sumip tool returns the last authenticated and unauthenticated scan times and the OS CPE."},
+    {"id": "individual-view", "acid": "req-tenable-scan-result-5", "claim": "The individual view of a finished scan result returns its records."},
+    {"id": "scan-detail-scanners", "acid": "req-tenable-scan-result-4", "claim": "A scan result's detail record (progress) names the scanners that ran it."},
+    {"id": "scanner-org-view", "acid": "req-tenable-scanners-zones-4", "claim": "An organisation user's scanner list is narrowed to agent-capable scanners with few fields."},
+    {"id": "host-uuid-stability", "acid": "req-tenable-findings-8", "claim": "One plugin, port and IP does not appear both with and without a hostUUID."},
+    {"id": "director-detection", "acid": "req-tenable-probe-7", "claim": "A Director-managed or Enclave Security deployment can be told apart from a plain Security Center by the probe's reads."},
+    {"id": "hosts-paging", "acid": "req-tenable-response-contract-7", "claim": "The /hosts paging flag (not read in v0)."}
+  ]
+}
