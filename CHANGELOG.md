@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/unified-systems-com/tenable-tap/compare/v0.1.1...v0.1.2) (2026-11-25)
+
+
+### Features
+
+* **event-time:** declare every type's event time through one epoch reader ([244d37d](https://github.com/unified-systems-com/tenable-tap/commit/244d37d53a1f8f853a3f6b61b506b6cf6376cabe))
+
 ## [0.1.1](https://github.com/unified-systems-com/tenable-tap/compare/v0.1.0...v0.1.1) (2026-11-20)
 
 
