@@ -6,6 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
+        # Hand-added (tap v0.5.0 wave 3): the history event-time columns core's boot gate requires.
         ('tap_grid', '0024_history_event_time'),
         ('tenable', '0002_spine_copies'),
     ]
